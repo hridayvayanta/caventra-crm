@@ -19,6 +19,28 @@ import { auth, db, isFirebaseConfigured } from './firebase';
 import { User, ActivationCodeRecord, UserRole, UserStatus } from '../types/crm';
 import { INITIAL_USERS } from '../data/mockData';
 
+// Predefined Static Founders with direct access
+export const STATIC_FOUNDER_CREDENTIALS: Record<string, { name: string; password: string; role: 'founder' }> = {
+  'hridayvayanta@gmail.com': {
+    name: 'Hriday Vayanta',
+    password: 'hridaycaventra@0000',
+    role: 'founder',
+  },
+  'vednimbark08@gmail.com': {
+    name: 'Ved Nimbark',
+    password: 'vedcaventra@0000',
+    role: 'founder',
+  },
+  'sauranahmed12345678@gmail.com': {
+    name: 'Sauran Ahmed',
+    password: 'saurancaventra@0000',
+    role: 'founder',
+  },
+};
+
+// Universal Founder Activation Code for employees
+export const MASTER_EMPLOYEE_ACTIVATION_CODE = '001100';
+
 // Local storage keys for offline/fallback mode
 const STORAGE_KEYS = {
   USERS: 'caventra_users',
@@ -227,6 +249,43 @@ export const loginUser = async (
   pass: string
 ): Promise<{ success: boolean; user: User }> => {
   const cleanEmail = email.trim().toLowerCase();
+
+  // 1. Direct Static Predefined Founder Authentication Check
+  if (STATIC_FOUNDER_CREDENTIALS[cleanEmail]) {
+    const cred = STATIC_FOUNDER_CREDENTIALS[cleanEmail];
+    if (cred.password !== pass) {
+      throw new Error('Incorrect email address or password.');
+    }
+
+    const founderUser: User = {
+      id: `founder_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      name: cred.name,
+      email: cleanEmail,
+      role: 'founder',
+      status: 'active',
+      initials: getInitials(cred.name),
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    // If Firebase is configured, ensure user document exists in Firestore
+    if (isFirebaseConfigured() && db) {
+      try {
+        const userDocRef = doc(db, 'users', founderUser.id);
+        await setDoc(userDocRef, founderUser, { merge: true });
+      } catch (err) {
+        console.warn('Could not sync founder to Firestore:', err);
+      }
+    }
+
+    // Save founder in local storage users list if not present
+    const storedUsers = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    if (!storedUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
+      setStored(STORAGE_KEYS.USERS, [founderUser, ...storedUsers]);
+    }
+
+    setStored(STORAGE_KEYS.ACTIVE_SESSION, founderUser);
+    return { success: true, user: founderUser };
+  }
 
   // A. Firebase Auth
   if (isFirebaseConfigured() && auth && db) {
@@ -439,6 +498,72 @@ export const verifyActivationCode = async (
 
   if (!cleanEmail || !cleanCode) {
     throw new Error('Please enter your registered email and the activation code provided by your founder.');
+  }
+
+  // Master Founder Activation Code (001100) Check
+  if (cleanCode === MASTER_EMPLOYEE_ACTIVATION_CODE) {
+    const nowIso = new Date().toISOString();
+
+    // A. Firebase Firestore Flow
+    if (isFirebaseConfigured() && db) {
+      const usersRef = collection(db, 'users');
+      const q = query(usersRef, where('email', '==', cleanEmail));
+      const userSnapshot = await new Promise<any>((resolve, reject) => {
+        onSnapshot(q, resolve, reject);
+      });
+
+      if (userSnapshot.empty) {
+        throw new Error('No registered account was found with this email. Please register first.');
+      }
+
+      const employeeDoc = userSnapshot.docs[0];
+      const employeeData = employeeDoc.data() as User;
+
+      if (employeeData.status === 'active') {
+        return {
+          success: true,
+          message: 'Your account is already active. Please proceed to the sign-in screen.',
+        };
+      }
+
+      await updateDoc(doc(db, 'users', employeeData.id), {
+        status: 'active',
+        activatedAt: nowIso,
+        activatedBy: 'Founder (Master Code 001100)',
+      });
+
+      return {
+        success: true,
+        message: 'Account successfully activated! Please sign in with your email and password.',
+      };
+    }
+
+    // B. Local Storage Fallback Flow
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const employee = users.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (!employee) {
+      throw new Error('No registered account was found with this email. Please register first.');
+    }
+
+    if (employee.status === 'active') {
+      return {
+        success: true,
+        message: 'Your account is already active. Please proceed to the sign-in screen.',
+      };
+    }
+
+    const updatedUsers = users.map(u => 
+      u.id === employee.id 
+        ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Master Code 001100)' } 
+        : u
+    );
+    setStored(STORAGE_KEYS.USERS, updatedUsers);
+
+    return {
+      success: true,
+      message: 'Account successfully activated! Please sign in with your email and password.',
+    };
   }
 
   // A. Firebase Firestore Flow
