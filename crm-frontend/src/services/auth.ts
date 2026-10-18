@@ -21,6 +21,11 @@ import { INITIAL_USERS } from '../data/mockData';
 
 // Predefined Static Founders with direct access
 export const STATIC_FOUNDER_CREDENTIALS: Record<string, { name: string; password: string; role: 'founder' }> = {
+  'hridayvayanta7@gmail.com': {
+    name: 'Hriday Vayanta',
+    password: 'hridaycaventra@0000',
+    role: 'founder',
+  },
   'hridayvayanta@gmail.com': {
     name: 'Hriday Vayanta',
     password: 'hridaycaventra@0000',

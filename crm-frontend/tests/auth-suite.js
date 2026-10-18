@@ -29,6 +29,11 @@ const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim().
 
 // Predefined Static Founder Credentials
 const STATIC_FOUNDER_CREDENTIALS = {
+  'hridayvayanta7@gmail.com': {
+    name: 'Hriday Vayanta',
+    password: 'hridaycaventra@0000',
+    role: 'founder',
+  },
   'hridayvayanta@gmail.com': {
     name: 'Hriday Vayanta',
     password: 'hridaycaventra@0000',

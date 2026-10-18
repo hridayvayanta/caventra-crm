@@ -4,7 +4,7 @@ export const STATIC_FOUNDERS: User[] = [
   {
     id: 'founder_hriday',
     name: 'Hriday Vayanta',
-    email: 'hridayvayanta@gmail.com',
+    email: 'hridayvayanta7@gmail.com',
     role: 'founder',
     status: 'active',
     phoneNumber: '+91 9876543210',
