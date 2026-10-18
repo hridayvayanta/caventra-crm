@@ -15,7 +15,8 @@ export type LeadSection =
   | 'in_discussion' 
   | 'won' 
   | 'lost'
-  | 'import_history';
+  | 'import_history'
+  | 'drive_import_status';
 
 export type LeadPriority = 'normal' | 'high' | 'urgent';
 export type UserRole = 'admin' | 'employee';
@@ -91,10 +92,14 @@ export interface Lead {
   priority: LeadPriority;
   assignedTo?: string | null;
   lastContactDate?: string | null;
-  nextFollowUpDate?: string | null; // YYYY-MM-DD or ISO
-  nextFollowUpTime?: string | null; // HH:mm
+  nextFollowUpDate?: string | null;
+  nextFollowUpTime?: string | null;
   estimatedValue?: number;
   notes?: string;
+  leadSource?: string;
+  sourceFileId?: string;
+  sourceFileName?: string;
+  sourceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,6 +114,24 @@ export interface ImportRecord {
   rejectedCount: number;
   status: 'success' | 'partial' | 'failed';
   errorMessage?: string;
+}
+
+export interface IngestionJob {
+  id: string;
+  fileId: string;
+  fileName: string;
+  fileUrl?: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'partial';
+  totalRows: number;
+  processedRows: number;
+  leadsAdded: number;
+  duplicatesSkipped: number;
+  rowsRejected: number;
+  errors: string[];
+  startedAt: string;
+  completedAt?: string;
+  lastCheckedAt: string;
+  source: string;
 }
 
 export interface ContactCompletionFormValues {

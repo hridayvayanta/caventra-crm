@@ -13,7 +13,8 @@ import {
   LayoutGrid, 
   List,
   Sparkles,
-  History
+  History,
+  FolderSync
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -91,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2.5">
             
             {/* View Mode Toggle (Board vs List) */}
-            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && (
+            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && currentSection !== 'drive_import_status' && (
               <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
                   onClick={() => setViewMode('board')}
@@ -282,6 +283,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <History className="w-3.5 h-3.5 text-slate-500" />
             <span>Import History</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('drive_import_status')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'drive_import_status'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <FolderSync className="w-3.5 h-3.5 text-blue-600" />
+            <span>Drive Import Status</span>
+            <span className="px-1 py-0.2 rounded text-[9px] font-bold uppercase bg-blue-100 text-blue-800 font-mono">
+              Admin
+            </span>
           </button>
 
         </div>

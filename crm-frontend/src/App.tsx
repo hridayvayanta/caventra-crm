@@ -7,7 +7,8 @@ import {
   Activity, 
   FollowUpTask, 
   ImportRecord, 
-  ContactCompletionFormValues 
+  ContactCompletionFormValues,
+  IngestionJob
 } from './types/crm';
 import { INITIAL_USERS } from './data/mockData';
 import { 
@@ -15,6 +16,7 @@ import {
   subscribeFollowUps, 
   subscribeActivities, 
   subscribeImportHistory,
+  subscribeIngestionJobs,
   saveLead, 
   updateLead, 
   deleteLead, 
@@ -34,6 +36,7 @@ import { ExcelImportModal } from './components/ExcelImportModal';
 import { ContactCompletionModal } from './components/ContactCompletionModal';
 import { FollowUpTasksView } from './components/FollowUpTasksView';
 import { ImportHistoryView } from './components/ImportHistoryView';
+import { DriveImportStatusView } from './components/DriveImportStatusView';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsConditions } from './components/TermsConditions';
 import { Shield, FileText, Database, CheckCircle2 } from 'lucide-react';
@@ -43,6 +46,7 @@ export function App() {
   const [followUps, setFollowUps] = useState<FollowUpTask[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [importHistory, setImportHistory] = useState<ImportRecord[]>([]);
+  const [ingestionJobs, setIngestionJobs] = useState<IngestionJob[]>([]);
 
   const [users] = useState<User[]>(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
@@ -65,12 +69,14 @@ export function App() {
     const unsubFollowUps = subscribeFollowUps(setFollowUps);
     const unsubActivities = subscribeActivities(null, setActivities);
     const unsubHistory = subscribeImportHistory(setImportHistory);
+    const unsubJobs = subscribeIngestionJobs(setIngestionJobs);
 
     return () => {
       unsubLeads();
       unsubFollowUps();
       unsubActivities();
       unsubHistory();
+      unsubJobs();
     };
   }, []);
 
@@ -251,7 +257,7 @@ export function App() {
         {!activeLegalPage && (
           <>
             {/* Top Metrics Row (Visible across lead views) */}
-            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && (
+            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && currentSection !== 'drive_import_status' && (
               <StatsRow leads={leads} />
             )}
 
@@ -267,6 +273,12 @@ export function App() {
               <ImportHistoryView
                 history={importHistory}
                 onOpenImportModal={() => setIsImportModalOpen(true)}
+              />
+            ) : currentSection === 'drive_import_status' ? (
+              /* Google Drive Automated Ingestion Status (Admin Console) */
+              <DriveImportStatusView
+                jobs={ingestionJobs}
+                currentUser={currentUser}
               />
             ) : leads.length === 0 ? (
               /* Empty Dashboard with prominent Excel Import & Add Lead actions */

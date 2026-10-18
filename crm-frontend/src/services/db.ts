@@ -16,7 +16,8 @@ import {
   Activity, 
   ImportRecord, 
   User, 
-  ContactCompletionFormValues 
+  ContactCompletionFormValues,
+  IngestionJob
 } from '../types/crm';
 
 // Local storage keys for offline/local mode
@@ -25,6 +26,7 @@ const STORAGE_KEYS = {
   FOLLOW_UPS: 'caventra_followups',
   ACTIVITIES: 'caventra_activities',
   IMPORT_HISTORY: 'caventra_import_history',
+  INGESTION_JOBS: 'caventra_ingestion_jobs',
 };
 
 // In-memory / localStorage helpers
@@ -175,6 +177,41 @@ export const subscribeImportHistory = (callback: (history: ImportRecord[]) => vo
     const history = getStored<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
     history.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
     callback(history);
+  };
+
+  emitCurrent();
+
+  const handleUpdate = () => emitCurrent();
+  window.addEventListener('caventra_storage_update', handleUpdate);
+  window.addEventListener('storage', handleUpdate);
+
+  return () => {
+    window.removeEventListener('caventra_storage_update', handleUpdate);
+    window.removeEventListener('storage', handleUpdate);
+  };
+};
+
+// 4b. Subscribe to Google Drive Ingestion Jobs (Real-time listener)
+export const subscribeIngestionJobs = (callback: (jobs: IngestionJob[]) => void): (() => void) => {
+  if (isFirebaseConfigured() && db) {
+    const jobsRef = collection(db, 'ingestionJobs');
+    return onSnapshot(jobsRef, (snapshot) => {
+      const jobs: IngestionJob[] = [];
+      snapshot.forEach((docSnap) => {
+        jobs.push(docSnap.data() as IngestionJob);
+      });
+      // Sort newest started/checked first
+      jobs.sort((a, b) => (b.startedAt || b.lastCheckedAt || '').localeCompare(a.startedAt || a.lastCheckedAt || ''));
+      callback(jobs);
+    }, (error) => {
+      console.error('Firestore subscribeIngestionJobs error:', error);
+    });
+  }
+
+  const emitCurrent = () => {
+    const jobs = getStored<IngestionJob[]>(STORAGE_KEYS.INGESTION_JOBS, []);
+    jobs.sort((a, b) => (b.startedAt || b.lastCheckedAt || '').localeCompare(a.startedAt || a.lastCheckedAt || ''));
+    callback(jobs);
   };
 
   emitCurrent();
