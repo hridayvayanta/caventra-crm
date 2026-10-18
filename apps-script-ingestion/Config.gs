@@ -61,9 +61,9 @@ var Config = (function () {
  * Run this function after setting your values below.
  */
 function configureIngestionSettings() {
-  // Replace these with your actual IDs:
-  var FIRESTORE_PROJECT_ID = 'YOUR_FIREBASE_PROJECT_ID';
-  var INBOX_FOLDER_ID = 'YOUR_GOOGLE_DRIVE_FOLDER_ID';
+  // Configured for CAVENTRA CRM:
+  var FIRESTORE_PROJECT_ID = 'YOUR_FIREBASE_PROJECT_ID'; // Replace with your Firebase Project ID
+  var INBOX_FOLDER_ID = '1VcNqOmAIhhDIE2FHDY1Aimzn_HCCcFv_'; // Connected Google Drive Folder
   var PROCESSED_FOLDER_ID = ''; // Optional
 
   Config.saveSettings(FIRESTORE_PROJECT_ID, INBOX_FOLDER_ID, PROCESSED_FOLDER_ID);
