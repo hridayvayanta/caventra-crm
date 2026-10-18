@@ -81,13 +81,32 @@ export function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // One-time automatic purge of previous unvalidated 140 leads
+  // One-time automatic purge of previous unvalidated 140 leads & legacy dummy founder user entries
   useEffect(() => {
     if (!localStorage.getItem('caventra_leads_purged_contact_filter_v2')) {
       purgeAllLeads();
       localStorage.setItem('caventra_leads_purged_contact_filter_v2', 'true');
     }
-  }, []);
+
+    if (!localStorage.getItem('caventra_users_cleaned_v1')) {
+      const stored = localStorage.getItem('caventra_users');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const founderEmails = ['hridayvayanta7@gmail.com', 'hridayvayanta@gmail.com', 'vednimbark08@gmail.com', 'sauranahmed12345678@gmail.com'];
+          const currentEmail = currentUser?.email?.toLowerCase();
+          const filtered = parsed.filter((u: any) => {
+            if (founderEmails.includes(u.email?.toLowerCase()) && u.email?.toLowerCase() !== currentEmail) {
+              return false;
+            }
+            return true;
+          });
+          localStorage.setItem('caventra_users', JSON.stringify(filtered));
+        } catch {}
+      }
+      localStorage.setItem('caventra_users_cleaned_v1', 'true');
+    }
+  }, [currentUser?.email]);
 
   // Real-time synchronization for users
   useEffect(() => {

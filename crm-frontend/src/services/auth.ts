@@ -143,6 +143,7 @@ export const validateEmail = (email: string): boolean => {
 // 1. Employee Registration
 // ==========================================
 export interface RegistrationPayload {
+  name?: string;
   fullName: string;
   phoneNumber: string;
   email: string;
@@ -153,13 +154,13 @@ export interface RegistrationPayload {
 export const registerEmployee = async (
   payload: RegistrationPayload
 ): Promise<{ success: boolean; user: User; message: string }> => {
-  const name = payload.fullName.trim();
+  const name = (payload.fullName || payload.name || '').trim();
   const phone = payload.phoneNumber.trim();
   const email = payload.email.trim().toLowerCase();
   const password = payload.password;
 
   if (!name || name.length < 2) {
-    throw new Error('Full name must be at least 2 characters long.');
+    throw new Error('Please enter your full name (at least 2 characters).');
   }
   if (!validatePhone(phone)) {
     throw new Error('Please enter a valid phone number (8 to 15 digits).');

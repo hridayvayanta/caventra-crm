@@ -32,6 +32,44 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [noteText, setNoteText] = useState('');
   const leadActivities = activities.filter(a => a.leadId === lead.id);
 
+  // Dynamic list of assignable employees:
+  // 1. Current logged-in user is ALWAYS first and available
+  // 2. Any active registered users/employees (excluding unauthenticated dummy founder placeholders)
+  // 3. Any name currently assigned to this lead
+  const assignableEmployees = React.useMemo(() => {
+    const list: string[] = [];
+
+    // 1. Current logged-in user
+    if (currentUser?.name && !list.includes(currentUser.name)) {
+      list.push(currentUser.name);
+    }
+
+    // 2. Registered active team members
+    const founderEmails = [
+      'hridayvayanta7@gmail.com',
+      'hridayvayanta@gmail.com',
+      'vednimbark08@gmail.com',
+      'sauranahmed12345678@gmail.com'
+    ];
+
+    users.forEach(u => {
+      if (u.name && u.status === 'active') {
+        const isUnauthenticatedFounder = founderEmails.includes(u.email?.toLowerCase()) && 
+          u.email?.toLowerCase() !== currentUser?.email?.toLowerCase();
+        if (!isUnauthenticatedFounder && !list.includes(u.name)) {
+          list.push(u.name);
+        }
+      }
+    });
+
+    // 3. Ensure currently assigned name is kept if not already in list
+    if (lead?.assignedTo && !list.includes(lead.assignedTo)) {
+      list.push(lead.assignedTo);
+    }
+
+    return list;
+  }, [currentUser?.name, currentUser?.email, users, lead?.assignedTo]);
+
   const handleAddNoteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!noteText.trim()) return;
@@ -119,8 +157,10 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 className="w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 bg-white border border-slate-300 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Unassigned</option>
-                {users.map(u => (
-                  <option key={u.id} value={u.name}>{u.name}</option>
+                {assignableEmployees.map(empName => (
+                  <option key={empName} value={empName}>
+                    {currentUser?.name === empName ? `${empName} (You)` : empName}
+                  </option>
                 ))}
               </select>
             </div>

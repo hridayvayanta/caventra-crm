@@ -59,7 +59,8 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
 
     try {
       const res = await registerEmployee({
-        fullName,
+        name: fullName.trim(),
+        fullName: fullName.trim(),
         phoneNumber,
         email,
         password,
@@ -116,15 +117,18 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
             
             {/* Field 1: Full name */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700">
-                Full name <span className="text-rose-500">*</span>
+              <label htmlFor="reg-name" className="block text-xs font-semibold text-slate-700">
+                Your Name (Employee Name) <span className="text-rose-500">*</span>
               </label>
               <input
+                id="reg-name"
+                name="name"
                 type="text"
                 required
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="e.g. Aryan Sharma"
+                placeholder="Enter your full name (e.g. Aryan Sharma)"
                 className="mt-1 block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
               />
             </div>

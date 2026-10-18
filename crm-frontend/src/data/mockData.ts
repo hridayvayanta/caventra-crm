@@ -33,7 +33,7 @@ export const STATIC_FOUNDERS: User[] = [
   },
 ];
 
-export const INITIAL_USERS: User[] = STATIC_FOUNDERS;
+export const INITIAL_USERS: User[] = [];
 
 // Starts clean with zero demo data
 export const INITIAL_LEADS: Lead[] = [];
