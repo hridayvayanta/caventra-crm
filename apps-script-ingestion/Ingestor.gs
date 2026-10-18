@@ -345,6 +345,18 @@ var Ingestor = (function () {
         var rawWeb = mapping.website !== -1 ? String(row[mapping.website] || '').trim() : '';
         var rawEmail = mapping.businessEmail !== -1 ? String(row[mapping.businessEmail] || '').trim().toLowerCase() : '';
         var rawPhone = mapping.businessPhone !== -1 ? String(row[mapping.businessPhone] || '').trim() : '';
+        var cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+
+        // Mandatory Contact Validation: Must have either valid email, phone, or both
+        var hasEmail = Boolean(rawEmail.length > 0 && rawEmail.indexOf('@') !== -1 && rawEmail.indexOf('.') !== -1);
+        var hasPhone = Boolean(cleanPhone.replace(/[^\d]/g, '').length >= 7);
+
+        if (!hasEmail && !hasPhone) {
+          rowsRejected++;
+          job.errors.push('Row ' + rowNum + ' (' + rawName + '): Missing contact details — must provide company email, phone number, or both');
+          continue;
+        }
+
         var rawContact = mapping.contactName !== -1 ? String(row[mapping.contactName] || '').trim() : '';
         var rawCity = mapping.city !== -1 ? String(row[mapping.city] || '').trim() : '';
         var rawCountry = mapping.country !== -1 ? String(row[mapping.country] || '').trim() : '';

@@ -20,6 +20,7 @@ import {
   saveLead, 
   updateLead, 
   deleteLead, 
+  purgeAllLeads,
   batchImportLeads, 
   recordContactCompletion, 
   completeFollowUpTask 
@@ -79,6 +80,14 @@ export function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // One-time automatic purge of previous unvalidated 140 leads
+  useEffect(() => {
+    if (!localStorage.getItem('caventra_leads_purged_contact_filter_v2')) {
+      purgeAllLeads();
+      localStorage.setItem('caventra_leads_purged_contact_filter_v2', 'true');
+    }
+  }, []);
 
   // Real-time synchronization for users
   useEffect(() => {
@@ -343,7 +352,7 @@ export function App() {
     try {
       const res = await syncLeadsFromGoogleDrive(currentUser, leads);
       if (res.success) {
-        showNotification(`✓ Synced ${res.importedCount} leads from Google Drive! (${res.duplicateCount} duplicates skipped)`);
+        showNotification(`✓ Synced ${res.importedCount} leads from Google Drive! (${res.duplicateCount} duplicates skipped, ${res.rejectedCount} rejected)`);
       } else {
         alert(res.error || 'Failed to sync from Google Drive.');
       }
@@ -351,6 +360,13 @@ export function App() {
       alert(`Error connecting to Google Drive: ${err.message}`);
     } finally {
       setIsSyncingDrive(false);
+    }
+  };
+
+  const handlePurgeAllLeads = async () => {
+    if (window.confirm('Remove all current leads from the CRM? (Your Google Drive Excel files will NOT be touched)')) {
+      await purgeAllLeads();
+      showNotification('All leads removed from CRM. Google Drive files were not touched.');
     }
   };
 
@@ -387,6 +403,7 @@ export function App() {
         onOpenImportModal={() => setIsImportModalOpen(true)}
         onSyncDrive={handleSyncDrive}
         isSyncingDrive={isSyncingDrive}
+        onPurgeLeads={handlePurgeAllLeads}
         onLogout={handleLogout}
         followUpsCount={pendingFollowUpsCount}
         newLeadsCount={newLeadsCount}

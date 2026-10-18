@@ -143,14 +143,27 @@ function parseSpreadsheetFile(file) {
     for (var r = 1; r < data.length; r++) {
       var row = data[r];
       var company = colMap.company !== -1 ? String(row[colMap.company] || '').trim() : '';
-      if (!company) continue; // Skip rows without company name
+      if (!company) continue; // Mandatory: Company Name
+
+      var rawEmail = colMap.email !== -1 ? String(row[colMap.email] || '').trim().toLowerCase() : '';
+      var rawPhone = colMap.phone !== -1 ? String(row[colMap.phone] || '').trim() : '';
+      var cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+
+      // Strict Validation: Must have at least one contact channel (email, phone, or both)
+      var hasEmail = Boolean(rawEmail.length > 0 && rawEmail.indexOf('@') !== -1 && rawEmail.indexOf('.') !== -1);
+      var hasPhone = Boolean(cleanPhone.replace(/[^\d]/g, '').length >= 7);
+
+      if (!hasEmail && !hasPhone) {
+        // Skip leads that have no email and no phone number
+        continue;
+      }
 
       var lead = {
         company: company,
         website: colMap.website !== -1 ? String(row[colMap.website] || '').trim() : '',
         contactName: colMap.contact !== -1 ? String(row[colMap.contact] || '').trim() : '',
-        email: colMap.email !== -1 ? String(row[colMap.email] || '').trim().toLowerCase() : '',
-        phone: colMap.phone !== -1 ? String(row[colMap.phone] || '').trim() : '',
+        email: hasEmail ? rawEmail : '',
+        phone: hasPhone ? rawPhone : '',
         city: colMap.city !== -1 ? String(row[colMap.city] || '').trim() : '',
         country: colMap.country !== -1 ? String(row[colMap.country] || '').trim() : '',
         industry: colMap.industry !== -1 ? String(row[colMap.industry] || '').trim() : '',
@@ -184,16 +197,60 @@ function mapHeaders(headers) {
   var map = { company: -1, website: -1, contact: -1, email: -1, phone: -1, city: -1, country: -1, industry: -1, notes: -1 };
 
   for (var i = 0; i < headers.length; i++) {
-    var h = String(headers[i] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (map.company === -1 && ['company', 'companyname', 'business', 'businessname', 'name', 'client'].indexOf(h) !== -1) map.company = i;
-    else if (map.website === -1 && ['website', 'domain', 'url', 'web', 'site'].indexOf(h) !== -1) map.website = i;
-    else if (map.contact === -1 && ['contact', 'contactname', 'person', 'owner', 'fullname'].indexOf(h) !== -1) map.contact = i;
-    else if (map.email === -1 && ['email', 'businessemail', 'mail'].indexOf(h) !== -1) map.email = i;
-    else if (map.phone === -1 && ['phone', 'mobile', 'tel', 'businessphone'].indexOf(h) !== -1) map.phone = i;
-    else if (map.city === -1 && ['city', 'location'].indexOf(h) !== -1) map.city = i;
-    else if (map.country === -1 && ['country', 'nation'].indexOf(h) !== -1) map.country = i;
-    else if (map.industry === -1 && ['industry', 'sector', 'category'].indexOf(h) !== -1) map.industry = i;
-    else if (map.notes === -1 && ['notes', 'comments', 'description', 'need', 'condition'].indexOf(h) !== -1) map.notes = i;
+    var rawH = String(headers[i] || '').trim().toLowerCase();
+    var h = rawH.replace(/[^a-z0-9]/g, '');
+
+    // Company Name
+    if (map.company === -1 && (
+      ['company', 'companyname', 'business', 'businessname', 'name', 'client', 'firm', 'organization', 'agency'].indexOf(h) !== -1 ||
+      rawH.indexOf('company') !== -1 || rawH.indexOf('business') !== -1
+    )) {
+      map.company = i;
+    }
+    // Website
+    else if (map.website === -1 && (
+      ['website', 'domain', 'url', 'web', 'site', 'websiteurl', 'link'].indexOf(h) !== -1 ||
+      rawH.indexOf('website') !== -1 || rawH.indexOf('domain') !== -1
+    )) {
+      map.website = i;
+    }
+    // Contact Person
+    else if (map.contact === -1 && (
+      ['contact', 'contactname', 'person', 'owner', 'fullname', 'decisionmaker', 'founder', 'ceo'].indexOf(h) !== -1 ||
+      rawH.indexOf('contact person') !== -1 || rawH.indexOf('contact name') !== -1
+    )) {
+      map.contact = i;
+    }
+    // Email
+    else if (map.email === -1 && (
+      ['email', 'businessemail', 'mail', 'emailaddress', 'contactemail', 'primaryemail', 'workemail', 'companyemail'].indexOf(h) !== -1 ||
+      rawH.indexOf('email') !== -1 || rawH.indexOf('mail') !== -1
+    )) {
+      map.email = i;
+    }
+    // Phone
+    else if (map.phone === -1 && (
+      ['phone', 'mobile', 'tel', 'businessphone', 'telephone', 'phonenumber', 'contactnumber', 'telephonenumber', 'mobilenumber', 'phoneno', 'mobileno', 'cell', 'whatsapp'].indexOf(h) !== -1 ||
+      rawH.indexOf('phone') !== -1 || rawH.indexOf('mobile') !== -1 || rawH.indexOf('tel') !== -1
+    )) {
+      map.phone = i;
+    }
+    // City
+    else if (map.city === -1 && ['city', 'location', 'town'].indexOf(h) !== -1) {
+      map.city = i;
+    }
+    // Country
+    else if (map.country === -1 && ['country', 'nation', 'region'].indexOf(h) !== -1) {
+      map.country = i;
+    }
+    // Industry
+    else if (map.industry === -1 && ['industry', 'sector', 'category'].indexOf(h) !== -1) {
+      map.industry = i;
+    }
+    // Notes
+    else if (map.notes === -1 && ['notes', 'comments', 'description', 'need', 'condition'].indexOf(h) !== -1) {
+      map.notes = i;
+    }
   }
 
   // Fallback: If company wasn't matched by name, assume column 0

@@ -6,6 +6,7 @@ import {
   deleteDoc, 
   onSnapshot, 
   writeBatch, 
+  getDocs,
   query, 
   orderBy 
 } from 'firebase/firestore';
@@ -289,6 +290,27 @@ export const deleteLead = async (leadId: string, performedBy: User): Promise<voi
 
   const tasks = getStored<FollowUpTask[]>(STORAGE_KEYS.FOLLOW_UPS, []);
   setStored(STORAGE_KEYS.FOLLOW_UPS, tasks.filter(t => t.leadId !== leadId));
+};
+
+// 7b. Purge All CRM Leads (Keeps Google Drive untouched)
+export const purgeAllLeads = async (): Promise<void> => {
+  if (isFirebaseConfigured() && db) {
+    try {
+      const snap = await getDocs(collection(db, 'leads'));
+      const batch = writeBatch(db);
+      snap.docs.forEach(docSnap => batch.delete(docSnap.ref));
+      await batch.commit();
+    } catch (e) {
+      console.warn('Firebase leads purge warning:', e);
+    }
+  }
+
+  setStored(STORAGE_KEYS.LEADS, []);
+  setStored(STORAGE_KEYS.ACTIVITIES, []);
+  setStored(STORAGE_KEYS.FOLLOW_UPS, []);
+  setStored(STORAGE_KEYS.IMPORT_HISTORY, []);
+  setStored('caventra_ingestion_jobs', []);
+  window.dispatchEvent(new Event('caventra_storage_update'));
 };
 
 // 8. Batch Import Leads (With Atomic Firestore or Storage confirmation)

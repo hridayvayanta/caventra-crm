@@ -86,13 +86,25 @@ export const syncLeadsFromGoogleDrive = async (
         continue;
       }
 
+      const email = String(raw.email || raw.businessEmail || '').trim().toLowerCase();
+      const rawPhone = String(raw.phone || raw.businessPhone || '').trim();
+      const cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+
+      // Strict Validation: Company name is mandatory AND must have at least one contact channel (email, phone, or both)
+      const hasEmail = Boolean(email && email.includes('@') && email.includes('.'));
+      const hasPhone = Boolean(cleanPhone && cleanPhone.replace(/[^\d]/g, '').length >= 7);
+
+      if (!hasEmail && !hasPhone) {
+        rejectedCount++;
+        continue;
+      }
+
       const website = String(raw.website || '').trim();
       const normDomain = normalizeDomain(website);
-      const email = String(raw.email || raw.businessEmail || '').trim().toLowerCase();
 
       // Check duplicates
       const isDomainDup = normDomain && existingDomains.has(normDomain);
-      const isEmailDup = email && existingEmails.has(email);
+      const isEmailDup = hasEmail && existingEmails.has(email);
 
       if (isDomainDup || isEmailDup) {
         duplicateCount++;
@@ -101,7 +113,7 @@ export const syncLeadsFromGoogleDrive = async (
 
       // Add to seen sets to avoid duplicates within the incoming batch
       if (normDomain) existingDomains.add(normDomain);
-      if (email) existingEmails.add(email);
+      if (hasEmail) existingEmails.add(email);
 
       const lead: Lead = {
         id: `lead_drive_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,

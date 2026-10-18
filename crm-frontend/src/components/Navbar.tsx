@@ -16,7 +16,8 @@ import {
   History,
   FolderSync,
   LogOut,
-  UserCheck
+  UserCheck,
+  Trash2
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -33,6 +34,7 @@ interface NavbarProps {
   onOpenImportModal: () => void;
   onSyncDrive?: () => void;
   isSyncingDrive?: boolean;
+  onPurgeLeads?: () => void;
   onLogout: () => void;
   followUpsCount: number;
   newLeadsCount: number;
@@ -53,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenImportModal,
   onSyncDrive,
   isSyncingDrive = false,
+  onPurgeLeads,
   onLogout,
   followUpsCount,
   newLeadsCount,
@@ -182,6 +185,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {isFounder ? 'Founder' : 'Employee'}
                 </span>
               </div>
+
+              {/* Founder Purge Leads Button */}
+              {isFounder && onPurgeLeads && (
+                <button
+                  onClick={onPurgeLeads}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+                  title="Remove all leads from CRM (Zero impact on Google Drive)"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
 
               {/* Sign Out Button */}
               <button

@@ -232,6 +232,14 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         validationErrors.push('Missing company / business name');
       }
 
+      // Required: Contact details (must have either email, phone, or both)
+      const hasEmail = Boolean(rawEmail && rawEmail.includes('@') && rawEmail.includes('.'));
+      const hasPhone = Boolean(normPhone && normPhone.replace(/[^\d]/g, '').length >= 7);
+
+      if (!hasEmail && !hasPhone) {
+        validationErrors.push('Missing contact details: must provide either company email, phone number, or both');
+      }
+
       // Check Duplicates against Database & Intra-file
       let isDuplicate = false;
       let duplicateReason = '';
