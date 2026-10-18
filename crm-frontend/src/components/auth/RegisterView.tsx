@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { registerEmployee, validatePasswordPolicy, validatePhone, validateEmail } from '../../services/auth';
 import { User } from '../../types/crm';
-import { ShieldCheck, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
 
 interface RegisterViewProps {
   onSwitchToLogin: () => void;
@@ -17,6 +17,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [founderCode, setFounderCode] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -65,6 +66,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
         email,
         password,
         confirmPassword,
+        activationCode: founderCode.trim(),
       });
 
       onRegistered(res.user);
@@ -233,6 +235,24 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            {/* Field 6: Founder Activation Code */}
+            <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+              <label className="block text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-blue-600" />
+                <span>Founder Approval Code (Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={founderCode}
+                onChange={(e) => setFounderCode(e.target.value.toUpperCase())}
+                placeholder="Enter founder code (e.g. 001100)"
+                className="block w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono tracking-widest uppercase font-semibold text-center"
+              />
+              <p className="text-[11px] text-blue-800/80">
+                Have the code from your founder? Enter it here to skip activation and access the CRM immediately!
+              </p>
             </div>
 
             {/* Submit Register Button */}

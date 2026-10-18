@@ -169,9 +169,14 @@ export function App() {
         <RegisterView
           onSwitchToLogin={() => setAuthScreen('login')}
           onRegistered={(registeredUser) => {
-            setActivationPrefillEmail(registeredUser.email);
-            setAuthScreen('login');
-            showNotification('Registration submitted! Enter your founder confirmation code.');
+            if (registeredUser.status === 'active') {
+              setCurrentUser(registeredUser);
+              showNotification(`Welcome to CAVENTRA CRM, ${registeredUser.name}!`);
+            } else {
+              setActivationPrefillEmail(registeredUser.email);
+              setAuthScreen('login');
+              showNotification('Registration submitted! Enter your founder confirmation code.');
+            }
           }}
         />
       );

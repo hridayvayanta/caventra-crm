@@ -38,6 +38,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [showCodeModal, setShowCodeModal] = useState(Boolean(initialPendingEmail));
   const [pendingUserEmail, setPendingUserEmail] = useState(initialPendingEmail || '');
   const [confirmationCode, setConfirmationCode] = useState('');
+  const [modalPassword, setModalPassword] = useState('');
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
 
@@ -63,6 +64,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       if (err.code === 'PENDING_ACTIVATION') {
         // Pop up the confirmation code option right here on screen!
         setPendingUserEmail(cleanEmail);
+        setModalPassword(password);
         setConfirmationCode('');
         setCodeError(null);
         setShowCodeModal(true);
@@ -80,10 +82,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
     setCodeError(null);
 
     const cleanCode = confirmationCode.trim().toUpperCase();
-    const targetEmail = pendingUserEmail || email.trim();
+    const targetEmail = (pendingUserEmail || email).trim();
+    const targetPassword = modalPassword || password;
+
+    if (!targetEmail) {
+      setCodeError('Please enter your registered email address.');
+      return;
+    }
 
     if (!cleanCode) {
       setCodeError('Please enter the confirmation code provided by your founder.');
+      return;
+    }
+
+    if (!targetPassword) {
+      setCodeError('Please enter your account password.');
       return;
     }
 
@@ -91,7 +104,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     try {
       // Verify code and immediately log in to grant access to the CRM
-      const res = await activateAndLoginEmployee(targetEmail, password, cleanCode);
+      const res = await activateAndLoginEmployee(targetEmail, targetPassword, cleanCode);
       setShowCodeModal(false);
       onLoginSuccess(res.user);
     } catch (err: any) {
@@ -291,22 +304,20 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 />
               </div>
 
-              {/* Password if not yet entered */}
-              {!password && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700">
-                    Account Password
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your registered password"
-                    className="mt-1 block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
-                  />
-                </div>
-              )}
+              {/* Account Password */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Account Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={modalPassword}
+                  onChange={(e) => setModalPassword(e.target.value)}
+                  placeholder="Enter your registered password"
+                  className="mt-1 block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                />
+              </div>
 
               {/* Confirmation Code Input (Confidential: Zero Mention of the Code Value!) */}
               <div>

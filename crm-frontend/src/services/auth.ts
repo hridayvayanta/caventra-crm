@@ -8,6 +8,7 @@ import {
 import { 
   doc, 
   getDoc, 
+  getDocs,
   setDoc, 
   updateDoc, 
   collection, 
@@ -149,15 +150,17 @@ export interface RegistrationPayload {
   email: string;
   password: string;
   confirmPassword: string;
+  activationCode?: string;
 }
 
 export const registerEmployee = async (
   payload: RegistrationPayload
-): Promise<{ success: boolean; user: User; message: string }> => {
+): Promise<{ success: boolean; user: User; message: string; activated?: boolean }> => {
   const name = (payload.fullName || payload.name || '').trim();
   const phone = payload.phoneNumber.trim();
   const email = payload.email.trim().toLowerCase();
   const password = payload.password;
+  const rawCode = (payload.activationCode || '').trim().toUpperCase();
 
   if (!name || name.length < 2) {
     throw new Error('Please enter your full name (at least 2 characters).');
@@ -177,6 +180,9 @@ export const registerEmployee = async (
     throw new Error(passCheck.errors.join('. '));
   }
 
+  const isInstantActivation = (rawCode === MASTER_EMPLOYEE_ACTIVATION_CODE);
+  const nowIso = new Date().toISOString();
+
   // A. Real Firebase Auth & Firestore flow
   if (isFirebaseConfigured() && auth && db) {
     try {
@@ -189,21 +195,34 @@ export const registerEmployee = async (
         email,
         phoneNumber: phone,
         role: 'employee',
-        status: 'pending_activation', // Server-constrained initial status
+        status: isInstantActivation ? 'active' : 'pending_activation',
         initials: getInitials(name),
-        createdAt: new Date().toISOString(),
-        registeredAt: new Date().toISOString(),
+        createdAt: nowIso,
+        registeredAt: nowIso,
+        ...(isInstantActivation ? { activatedAt: nowIso, activatedBy: 'Founder (Direct Registration 001100)' } : {})
       };
 
       // Write user profile to Firestore
       await setDoc(doc(db, 'users', uid), newUser);
 
-      // Immediately sign out from Firebase so pending employee cannot bypass auth
+      if (isInstantActivation) {
+        // Keep authenticated session active!
+        setStored(STORAGE_KEYS.ACTIVE_SESSION, newUser);
+        return {
+          success: true,
+          user: newUser,
+          activated: true,
+          message: 'Account successfully registered and activated! Welcome to CAVENTRA CRM.',
+        };
+      }
+
+      // Immediately sign out from Firebase if pending
       await signOut(auth);
 
       return {
         success: true,
         user: newUser,
+        activated: false,
         message: 'Ask your founder for the login code for the CRM.',
       };
     } catch (err: any) {
@@ -227,10 +246,11 @@ export const registerEmployee = async (
     email,
     phoneNumber: phone,
     role: 'employee',
-    status: 'pending_activation',
+    status: isInstantActivation ? 'active' : 'pending_activation',
     initials: getInitials(name),
-    createdAt: new Date().toISOString(),
-    registeredAt: new Date().toISOString(),
+    createdAt: nowIso,
+    registeredAt: nowIso,
+    ...(isInstantActivation ? { activatedAt: nowIso, activatedBy: 'Founder (Direct Registration 001100)' } : {})
   };
 
   const passHash = await hashSHA256(password);
@@ -240,9 +260,20 @@ export const registerEmployee = async (
 
   setStored(STORAGE_KEYS.USERS, [...users, newUser]);
 
+  if (isInstantActivation) {
+    setStored(STORAGE_KEYS.ACTIVE_SESSION, newUser);
+    return {
+      success: true,
+      user: newUser,
+      activated: true,
+      message: 'Account successfully registered and activated! Welcome to CAVENTRA CRM.',
+    };
+  }
+
   return {
     success: true,
     user: newUser,
+    activated: false,
     message: 'Ask your founder for the login code for the CRM.',
   };
 };
@@ -509,77 +540,78 @@ export const verifyActivationCode = async (
   // Master Founder Activation Code (001100) Check
   if (cleanCode === MASTER_EMPLOYEE_ACTIVATION_CODE) {
     const nowIso = new Date().toISOString();
+    let cloudActivated = false;
 
     // A. Firebase Firestore Flow
     if (isFirebaseConfigured() && db) {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('email', '==', cleanEmail));
-      const userSnapshot = await new Promise<any>((resolve, reject) => {
-        onSnapshot(q, resolve, reject);
-      });
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', cleanEmail));
+        const userSnapshot = await getDocs(q);
 
-      if (userSnapshot.empty) {
-        throw new Error('No registered account was found with this email. Please register first.');
+        if (!userSnapshot.empty) {
+          const employeeDoc = userSnapshot.docs[0];
+          const employeeData = employeeDoc.data() as User;
+
+          if (employeeData.status === 'active') {
+            return {
+              success: true,
+              message: 'Your account is already active. Please proceed to the sign-in screen.',
+            };
+          }
+
+          await updateDoc(doc(db, 'users', employeeDoc.id), {
+            status: 'active',
+            activatedAt: nowIso,
+            activatedBy: 'Founder (Master Code 001100)',
+          });
+          cloudActivated = true;
+        }
+      } catch (err) {
+        console.warn('Firestore verification attempt error:', err);
       }
-
-      const employeeDoc = userSnapshot.docs[0];
-      const employeeData = employeeDoc.data() as User;
-
-      if (employeeData.status === 'active') {
-        return {
-          success: true,
-          message: 'Your account is already active. Please proceed to the sign-in screen.',
-        };
-      }
-
-      await updateDoc(doc(db, 'users', employeeData.id), {
-        status: 'active',
-        activatedAt: nowIso,
-        activatedBy: 'Founder (Master Code 001100)',
-      });
-
-      return {
-        success: true,
-        message: 'Account successfully activated! Please sign in with your email and password.',
-      };
     }
 
     // B. Local Storage Fallback Flow
     const users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
     const employee = users.find(u => u.email.toLowerCase() === cleanEmail);
 
-    if (!employee) {
-      throw new Error('No registered account was found with this email. Please register first.');
-    }
+    if (employee) {
+      if (employee.status === 'active') {
+        return {
+          success: true,
+          message: 'Your account is already active. Please proceed to the sign-in screen.',
+        };
+      }
 
-    if (employee.status === 'active') {
+      const updatedUsers = users.map(u => 
+        u.id === employee.id 
+          ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Master Code 001100)' } 
+          : u
+      );
+      setStored(STORAGE_KEYS.USERS, updatedUsers);
       return {
         success: true,
-        message: 'Your account is already active. Please proceed to the sign-in screen.',
+        message: 'Account successfully activated! Please sign in with your email and password.',
       };
     }
 
-    const updatedUsers = users.map(u => 
-      u.id === employee.id 
-        ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Master Code 001100)' } 
-        : u
-    );
-    setStored(STORAGE_KEYS.USERS, updatedUsers);
+    if (cloudActivated) {
+      return {
+        success: true,
+        message: 'Account successfully activated! Please sign in with your email and password.',
+      };
+    }
 
-    return {
-      success: true,
-      message: 'Account successfully activated! Please sign in with your email and password.',
-    };
+    throw new Error('No registered account was found with this email. Please register first.');
   }
 
-  // A. Firebase Firestore Flow
+  // A. Firebase Firestore Flow for Custom Single-Use Codes
   if (isFirebaseConfigured() && db) {
     // 1. Find employee by email
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('email', '==', cleanEmail));
-    const userSnapshot = await new Promise<any>((resolve, reject) => {
-      onSnapshot(q, resolve, reject);
-    });
+    const userSnapshot = await getDocs(q);
 
     if (userSnapshot.empty) {
       throw new Error('No registered account was found with this email. Please register first.');
