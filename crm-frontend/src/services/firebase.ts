@@ -3,12 +3,12 @@ import { getFirestore, Firestore } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBEAn3RXqQ7Ipc5oaq33DJCdp7YtRhwFXE",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "caventra-crm.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "caventra-crm",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "caventra-crm.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "473904155435",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:473904155435:web:eae339dbd8ba813560136e",
 };
 
 export const isFirebaseConfigured = (): boolean => {
