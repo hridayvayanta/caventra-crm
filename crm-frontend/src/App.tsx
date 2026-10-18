@@ -1,47 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import { Lead, LeadStatus, User, Activity, IngestionBatch } from './types/crm';
-import { 
-  INITIAL_LEADS, 
-  INITIAL_USERS, 
-  INITIAL_ACTIVITIES, 
-  INITIAL_BATCHES 
-} from './data/mockData';
+import { Lead, LeadStatus, User, Activity } from './types/crm';
+import { INITIAL_USERS } from './data/mockData';
 import { Navbar } from './components/Navbar';
-import { MetricsCards } from './components/MetricsCards';
-import { PipelineBoard } from './components/PipelineBoard';
-import { LeadTable } from './components/LeadTable';
-import { LeadDetailModal } from './components/LeadDetailModal';
+import { StatsRow } from './components/StatsRow';
+import { LeadBoard } from './components/LeadBoard';
+import { LeadListView } from './components/LeadListView';
+import { EmptyState } from './components/EmptyState';
+import { LeadModal } from './components/LeadModal';
 import { AddLeadModal } from './components/AddLeadModal';
-import { IngestionHub } from './components/IngestionHub';
-import { FollowUpCalendar } from './components/FollowUpCalendar';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsConditions } from './components/TermsConditions';
-import { Shield, FileText, CheckCircle2 } from 'lucide-react';
+import { Shield, FileText } from 'lucide-react';
 
 export function App() {
+  // Clear any old mock demo data from previous sessions
   const [leads, setLeads] = useState<Lead[]>(() => {
-    const saved = localStorage.getItem('caventra_leads');
-    return saved ? JSON.parse(saved) : INITIAL_LEADS;
+    try {
+      const saved = localStorage.getItem('caventra_leads');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // If it contained old mock demo data with lead_001, reset to empty
+        if (Array.isArray(parsed) && parsed.some((l: any) => l.id === 'lead_001')) {
+          localStorage.removeItem('caventra_leads');
+          return [];
+        }
+        return parsed;
+      }
+    } catch (e) {}
+    return [];
   });
 
   const [users] = useState<User[]>(INITIAL_USERS);
   const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [activities, setActivities] = useState<Activity[]>(() => {
-    const saved = localStorage.getItem('caventra_activities');
-    return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
-  });
-  const [batches, setBatches] = useState<IngestionBatch[]>(() => {
-    const saved = localStorage.getItem('caventra_batches');
-    return saved ? JSON.parse(saved) : INITIAL_BATCHES;
+    try {
+      const saved = localStorage.getItem('caventra_activities');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((a: any) => a.id === 'act_1')) {
+          localStorage.removeItem('caventra_activities');
+          return [];
+        }
+        return parsed;
+      }
+    } catch (e) {}
+    return [];
   });
 
-  const [currentTab, setCurrentTab] = useState<'pipeline' | 'table' | 'calendar' | 'ingestion' | 'privacy' | 'terms'>('pipeline');
+  const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [activePage, setActivePage] = useState<'crm' | 'privacy' | 'terms'>('crm');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isHarvesting, setIsHarvesting] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
+  // Sync to localStorage
   useEffect(() => {
     localStorage.setItem('caventra_leads', JSON.stringify(leads));
   }, [leads]);
@@ -50,31 +64,26 @@ export function App() {
     localStorage.setItem('caventra_activities', JSON.stringify(activities));
   }, [activities]);
 
-  useEffect(() => {
-    localStorage.setItem('caventra_batches', JSON.stringify(batches));
-  }, [batches]);
-
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 3500);
+    setTimeout(() => setNotification(null), 3000);
   };
 
+  // Filter leads based on search query
   const filteredLeads = leads.filter(lead => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
       lead.businessName.toLowerCase().includes(q) ||
-      lead.normalizedDomain.toLowerCase().includes(q) ||
       lead.city.toLowerCase().includes(q) ||
-      lead.industry.toLowerCase().includes(q) ||
-      lead.websiteCondition.toLowerCase().includes(q)
+      (lead.businessPhone && lead.businessPhone.includes(q)) ||
+      lead.normalizedDomain.toLowerCase().includes(q) ||
+      lead.serviceOpportunity.toLowerCase().includes(q)
     );
   });
 
-  const handleUpdateLeadStatus = (leadId: string, newStatus: LeadStatus) => {
-    const lead = leads.find(l => l.id === leadId);
-    if (!lead) return;
-
+  // Update lead status
+  const handleUpdateStatus = (leadId: string, newStatus: LeadStatus) => {
     setLeads(prev => prev.map(l => {
       if (l.id === leadId) {
         return { ...l, status: newStatus, updatedAt: new Date().toISOString() };
@@ -82,46 +91,48 @@ export function App() {
       return l;
     }));
 
-    handleAddActivity(
-      leadId,
-      `Stage Transition: ${newStatus.toUpperCase()}`,
-      `Moved from ${lead.status} to ${newStatus} by ${currentUser.name}`,
-      'status_change'
-    );
+    if (selectedLead && selectedLead.id === leadId) {
+      setSelectedLead(prev => prev ? { ...prev, status: newStatus } : null);
+    }
 
-    showNotification(`Lead moved to ${newStatus.toUpperCase()}`);
+    const statusLabel = 
+      newStatus === 'new' ? 'New' :
+      newStatus === 'contacted' ? 'Contacted' :
+      newStatus === 'in_progress' ? 'In Discussion' :
+      newStatus === 'won' ? 'Deal Won' : 'Lost';
+
+    showNotification(`Moved to "${statusLabel}"`);
   };
 
-  const handleUpdateLead = (updated: Lead) => {
-    setLeads(prev => prev.map(l => (l.id === updated.id ? updated : l)));
-    setSelectedLead(updated);
-    showNotification(`Record updated: ${updated.businessName}`);
+  // Delete lead
+  const handleDeleteLead = (leadId: string) => {
+    setLeads(prev => prev.filter(l => l.id !== leadId));
+    setSelectedLead(null);
+    showNotification('Lead removed from CRM.');
   };
 
-  const handleAddActivity = (
-    leadId: string,
-    title: string,
-    description: string,
-    type: Activity['type']
-  ) => {
+  // Add a note
+  const handleAddNote = (leadId: string, text: string) => {
     const newAct: Activity = {
       id: `act_${Date.now()}`,
       leadId,
-      title,
-      description,
-      type,
+      type: 'note',
+      title: 'Call / Discussion Note',
+      description: text,
       performedBy: currentUser.name,
       timestamp: new Date().toISOString(),
     };
     setActivities(prev => [newAct, ...prev]);
+    showNotification('Note saved.');
   };
 
+  // Add lead manually
   const handleAddLead = (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'normalizedDomain'>) => {
     const cleanDomain = leadData.website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase();
     
-    const existing = leads.find(l => l.normalizedDomain === cleanDomain);
-    if (existing) {
-      alert(`A record for domain "${cleanDomain}" already exists in the database.`);
+    // Check duplicates
+    if (leads.some(l => l.normalizedDomain === cleanDomain)) {
+      alert(`A lead with website domain "${cleanDomain}" already exists in the system!`);
       return;
     }
 
@@ -134,88 +145,56 @@ export function App() {
     };
 
     setLeads(prev => [newLead, ...prev]);
-    handleAddActivity(
-      newLead.id,
-      'Record Created Manually',
-      `Registered by ${currentUser.name}`,
-      'ingestion'
-    );
-    showNotification(`Registered ${newLead.businessName}`);
+    showNotification(`Added ${newLead.businessName}`);
   };
 
+  // Run automated lead discovery on-demand
   const handleTriggerHarvest = () => {
     setIsHarvesting(true);
-    showNotification('Executing scheduled ingestion pipeline...');
+    showNotification('Searching for prospective client websites...');
 
     setTimeout(() => {
       const generatedLead: Lead = {
         id: `lead_gen_${Date.now()}`,
-        businessName: 'Starlight Medical Group',
-        website: 'https://starlight-medical-dallas.com',
-        normalizedDomain: 'starlight-medical-dallas.com',
-        contactName: 'Dr. Rebecca Stone',
-        businessEmail: 'contact@starlight-medical-dallas.com',
-        businessPhone: '+1 (214) 555-0819',
-        city: 'Dallas, TX',
-        country: 'United States',
-        industry: 'Healthcare',
-        leadSource: 'Scheduled Ingestion Pipeline',
-        sourceUrl: 'https://aistudio.google.com',
-        websiteCondition: 'TLS certificate expired 14 days ago triggering browser security warnings. Server TTFB latency measured at 4.1s.',
-        serviceOpportunity: 'Security Audit',
-        verificationLevel: 'automated_scan',
+        businessName: 'Apex Health Clinic',
+        website: 'https://apexhealth-example.com',
+        normalizedDomain: 'apexhealth-example.com',
+        contactName: 'Dr. Michael Chen',
+        businessEmail: 'contact@apexhealth-example.com',
+        businessPhone: '+91 98201 55432',
+        city: 'Mumbai',
+        country: 'India',
+        serviceOpportunity: 'Website Redesign',
+        websiteCondition: 'Website does not display properly on mobile phones and lacks SSL security encryption.',
         status: 'new',
-        priority: 'urgent',
+        priority: 'high',
         assignedTo: null,
-        estimatedValue: 52000,
-        nextFollowUpDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
-        lastContactDate: null,
-        notes: 'Discovered via scheduled scan. Insecure checkout endpoints detected on patient booking portal.',
+        estimatedValue: 45000,
+        notes: 'Identified through automated search.',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
 
       setLeads(prev => [generatedLead, ...prev]);
-      
-      const newBatch: IngestionBatch = {
-        id: `batch_${Date.now()}`,
-        source: 'Automated Ingestion Service (On-Demand Execution)',
-        timestamp: 'Just now',
-        leadsHarvested: 5,
-        newLeads: 1,
-        duplicatesSkipped: 4,
-        status: 'completed',
-      };
-
-      setBatches(prev => [newBatch, ...prev]);
-
-      handleAddActivity(
-        generatedLead.id,
-        'Lead Ingested on Autopilot',
-        'Criteria logged: Expired TLS certificate & 4.1s TTFB latency.',
-        'ingestion'
-      );
-
       setIsHarvesting(false);
-      showNotification('1 new organization ingested. Duplicate records skipped.');
-    }, 1500);
+      showNotification('New prospective client found!');
+    }, 1200);
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-['Inter',sans-serif]">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       
-      {/* Toast Notification */}
+      {/* Toast Alert */}
       {notification && (
-        <div className="fixed bottom-4 right-4 z-50 bg-neutral-900 border border-neutral-700 text-neutral-200 px-3.5 py-2 rounded shadow-2xl flex items-center gap-2 text-xs font-mono">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-          <span>{notification}</span>
+        <div className="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-xs font-semibold animate-in slide-in-from-bottom duration-150">
+          {notification}
         </div>
       )}
 
-      {/* Navigation Header */}
+      {/* Top Header */}
       <Navbar
-        currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         users={users}
@@ -224,103 +203,99 @@ export function App() {
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onTriggerHarvest={handleTriggerHarvest}
         isHarvesting={isHarvesting}
+        onOpenPrivacy={() => setActivePage('privacy')}
+        onOpenTerms={() => setActivePage('terms')}
       />
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
+      {/* Main Page Area */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* Metrics Overview (Visible on Pipeline and Directory) */}
-        {(currentTab === 'pipeline' || currentTab === 'table') && (
-          <MetricsCards leads={leads} />
+        {activePage === 'privacy' && (
+          <PrivacyPolicy onBack={() => setActivePage('crm')} />
         )}
 
-        {/* View Routing */}
-        {currentTab === 'pipeline' && (
-          <PipelineBoard
-            leads={filteredLeads}
-            users={users}
-            onSelectLead={(l) => setSelectedLead(l)}
-            onUpdateLeadStatus={handleUpdateLeadStatus}
-          />
+        {activePage === 'terms' && (
+          <TermsConditions onBack={() => setActivePage('crm')} />
         )}
 
-        {currentTab === 'table' && (
-          <LeadTable
-            leads={filteredLeads}
-            users={users}
-            onSelectLead={(l) => setSelectedLead(l)}
-            onUpdateLeadStatus={handleUpdateLeadStatus}
-          />
-        )}
+        {activePage === 'crm' && (
+          <>
+            {/* Top Stats Cards */}
+            <StatsRow leads={leads} />
 
-        {currentTab === 'calendar' && (
-          <FollowUpCalendar
-            leads={leads}
-            users={users}
-            onSelectLead={(l) => setSelectedLead(l)}
-          />
-        )}
-
-        {currentTab === 'ingestion' && (
-          <IngestionHub
-            batches={batches}
-            onTriggerHarvest={handleTriggerHarvest}
-            isHarvesting={isHarvesting}
-          />
-        )}
-
-        {currentTab === 'privacy' && (
-          <PrivacyPolicy onBack={() => setCurrentTab('pipeline')} />
-        )}
-
-        {currentTab === 'terms' && (
-          <TermsConditions onBack={() => setCurrentTab('pipeline')} />
+            {/* If zero leads in CRM */}
+            {leads.length === 0 ? (
+              <EmptyState
+                onOpenAddModal={() => setIsAddModalOpen(true)}
+                onTriggerHarvest={handleTriggerHarvest}
+                isHarvesting={isHarvesting}
+              />
+            ) : filteredLeads.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500 text-sm">
+                No leads match your search query "{searchQuery}".
+              </div>
+            ) : viewMode === 'board' ? (
+              <LeadBoard
+                leads={filteredLeads}
+                users={users}
+                onSelectLead={(l) => setSelectedLead(l)}
+                onUpdateStatus={handleUpdateStatus}
+              />
+            ) : (
+              <LeadListView
+                leads={filteredLeads}
+                users={users}
+                onSelectLead={(l) => setSelectedLead(l)}
+                onUpdateStatus={handleUpdateStatus}
+              />
+            )}
+          </>
         )}
 
       </main>
 
       {/* Modals */}
-      <LeadDetailModal
+      <LeadModal
         lead={selectedLead}
         onClose={() => setSelectedLead(null)}
         users={users}
         currentUser={currentUser}
-        onUpdateLead={handleUpdateLead}
+        onUpdateStatus={handleUpdateStatus}
+        onDeleteLead={handleDeleteLead}
         activities={activities}
-        onAddActivity={handleAddActivity}
+        onAddNote={handleAddNote}
       />
 
       <AddLeadModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onAddLead={handleAddLead}
-        users={users}
       />
 
-      {/* Clean Enterprise Footer */}
-      <footer className="border-t border-neutral-800 bg-neutral-950 py-3 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-xs text-neutral-400 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-neutral-300">CAVENTRA Technologies</span>
+      {/* Footer */}
+      <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-700">CAVENTRA CRM</span>
             <span>•</span>
-            <span className="font-mono text-[11px]">Serverless Infrastructure (₹0 Runtime Budget)</span>
+            <span>Simple Web Services Pipeline</span>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-4 text-xs font-medium">
             <button
-              onClick={() => setCurrentTab('privacy')}
-              className="hover:text-neutral-200 transition-colors flex items-center gap-1"
+              onClick={() => setActivePage('privacy')}
+              className="hover:text-blue-600 transition-colors flex items-center gap-1"
             >
-              <Shield className="w-3 h-3 text-neutral-500" />
-              Privacy Policy
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
+              <span>Privacy Policy</span>
             </button>
             <span>•</span>
             <button
-              onClick={() => setCurrentTab('terms')}
-              className="hover:text-neutral-200 transition-colors flex items-center gap-1"
+              onClick={() => setActivePage('terms')}
+              className="hover:text-blue-600 transition-colors flex items-center gap-1"
             >
-              <FileText className="w-3 h-3 text-neutral-500" />
-              Terms & Conditions
+              <FileText className="w-3.5 h-3.5 text-slate-400" />
+              <span>Terms & Conditions</span>
             </button>
           </div>
         </div>

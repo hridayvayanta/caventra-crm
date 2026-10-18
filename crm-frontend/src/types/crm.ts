@@ -1,6 +1,5 @@
-export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost';
-export type LeadPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type VerificationLevel = 'verified' | 'automated_scan' | 'unverified';
+export type LeadStatus = 'new' | 'contacted' | 'in_progress' | 'won' | 'lost';
+export type LeadPriority = 'normal' | 'high' | 'urgent';
 export type UserRole = 'admin' | 'employee';
 
 export interface User {
@@ -14,7 +13,7 @@ export interface User {
 export interface Activity {
   id: string;
   leadId: string;
-  type: 'status_change' | 'note' | 'call' | 'email' | 'ingestion';
+  type: 'note' | 'call' | 'email' | 'status_change';
   title: string;
   description: string;
   performedBy: string;
@@ -29,20 +28,14 @@ export interface Lead {
   contactName?: string | null;
   businessEmail?: string | null;
   businessPhone?: string | null;
-  country: string;
   city: string;
-  industry: string;
-  leadSource: string;
-  sourceUrl?: string;
-  websiteCondition: string; // Factual technical assessment
-  serviceOpportunity: 'Redesign' | 'Maintenance' | 'Hosting' | 'Security Audit' | 'Speed Optimization';
-  verificationLevel: VerificationLevel;
+  country: string;
+  websiteCondition: string; // Plain English: e.g. "Website is not mobile-friendly"
+  serviceOpportunity: string; // e.g. "Website Redesign", "Maintenance", "Security"
   status: LeadStatus;
   priority: LeadPriority;
-  assignedTo?: string | null; // User ID
-  lastContactDate?: string | null;
-  nextFollowUpDate?: string | null;
-  estimatedValue?: number; // In INR (₹)
+  assignedTo?: string | null;
+  estimatedValue?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
