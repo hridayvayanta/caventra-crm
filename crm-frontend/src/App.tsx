@@ -141,20 +141,8 @@ export function App() {
           onSwitchToLogin={() => setAuthScreen('login')}
           onRegistered={(registeredUser) => {
             setActivationPrefillEmail(registeredUser.email);
-            setAuthScreen('activation');
-            showNotification('Registration submitted! Ask your founder for the login code.');
-          }}
-        />
-      );
-    }
-
-    if (authScreen === 'activation') {
-      return (
-        <ActivationView
-          initialEmail={activationPrefillEmail}
-          onSwitchToLogin={(msg) => {
-            setLoginNotice(msg || 'Account activated. Please sign in with your password.');
             setAuthScreen('login');
+            showNotification('Registration submitted! Enter your founder confirmation code.');
           }}
         />
       );
@@ -163,17 +151,15 @@ export function App() {
     return (
       <LoginView
         initialMessage={loginNotice}
+        initialPendingEmail={activationPrefillEmail}
         onLoginSuccess={(user) => {
           setCurrentUser(user);
           showNotification(`Welcome, ${user.name}`);
         }}
         onSwitchToRegister={() => {
           setLoginNotice(null);
+          setActivationPrefillEmail('');
           setAuthScreen('register');
-        }}
-        onSwitchToActivation={(email) => {
-          if (email) setActivationPrefillEmail(email);
-          setAuthScreen('activation');
         }}
       />
     );
@@ -183,17 +169,16 @@ export function App() {
   // Session Access Controls
   // ==========================================
 
-  // Pending Activation Guard
+  // Pending Activation Guard — In-line code popup
   if (currentUser.status === 'pending_activation') {
     return (
-      <ActivationView
-        initialEmail={currentUser.email}
-        onSwitchToLogin={async (msg) => {
-          await logoutUser();
-          setCurrentUser(null);
-          setLoginNotice(msg || null);
-          setAuthScreen('login');
+      <LoginView
+        initialPendingEmail={currentUser.email}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          showNotification(`Welcome, ${user.name}`);
         }}
+        onSwitchToRegister={() => setAuthScreen('register')}
       />
     );
   }

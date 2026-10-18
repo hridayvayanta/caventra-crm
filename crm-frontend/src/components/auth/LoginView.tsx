@@ -1,22 +1,32 @@
 import React, { useState } from 'react';
-import { loginUser } from '../../services/auth';
+import { loginUser, activateAndLoginEmployee } from '../../services/auth';
 import { User } from '../../types/crm';
-import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2, UserPlus, KeyRound } from 'lucide-react';
+import { 
+  Eye, 
+  EyeOff, 
+  Loader2, 
+  AlertCircle, 
+  CheckCircle2, 
+  UserPlus, 
+  KeyRound, 
+  X,
+  ShieldCheck 
+} from 'lucide-react';
 
 interface LoginViewProps {
   onLoginSuccess: (user: User) => void;
   onSwitchToRegister: () => void;
-  onSwitchToActivation: (email?: string) => void;
   initialMessage?: string | null;
+  initialPendingEmail?: string | null;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onLoginSuccess,
   onSwitchToRegister,
-  onSwitchToActivation,
   initialMessage = null,
+  initialPendingEmail = null,
 }) => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialPendingEmail || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -24,6 +34,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(initialMessage);
 
+  // In-line confirmation code popup state
+  const [showCodeModal, setShowCodeModal] = useState(Boolean(initialPendingEmail));
+  const [pendingUserEmail, setPendingUserEmail] = useState(initialPendingEmail || '');
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+
+  // Handle standard login submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -39,10 +57,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     try {
       const res = await loginUser(cleanEmail, password);
+      // Founders & active employees gain direct access immediately!
       onLoginSuccess(res.user);
     } catch (err: any) {
       if (err.code === 'PENDING_ACTIVATION') {
-        onSwitchToActivation(cleanEmail);
+        // Pop up the confirmation code option right here on screen!
+        setPendingUserEmail(cleanEmail);
+        setConfirmationCode('');
+        setCodeError(null);
+        setShowCodeModal(true);
         return;
       }
       setError(err.message || 'Login failed. Please verify your credentials.');
@@ -51,8 +74,35 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
+  // Handle confirmation code submission in the popup
+  const handleVerifyCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCodeError(null);
+
+    const cleanCode = confirmationCode.trim().toUpperCase();
+    const targetEmail = pendingUserEmail || email.trim();
+
+    if (!cleanCode) {
+      setCodeError('Please enter the confirmation code provided by your founder.');
+      return;
+    }
+
+    setCodeLoading(true);
+
+    try {
+      // Verify code and immediately log in to grant access to the CRM
+      const res = await activateAndLoginEmployee(targetEmail, password, cleanCode);
+      setShowCodeModal(false);
+      onLoginSuccess(res.user);
+    } catch (err: any) {
+      setCodeError(err.message || 'Invalid confirmation code. Please check with your founder.');
+    } finally {
+      setCodeLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-['Plus_Jakarta_Sans',sans-serif] relative">
       
       {/* Brand Header */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
@@ -162,7 +212,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
           </form>
 
-          {/* Action Links: Register or Enter Activation Code */}
+          {/* Action Links */}
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
             <button
               onClick={onSwitchToRegister}
@@ -173,16 +223,139 @@ export const LoginView: React.FC<LoginViewProps> = ({
             </button>
 
             <button
-              onClick={() => onSwitchToActivation(email)}
+              onClick={() => {
+                setPendingUserEmail(email.trim());
+                setShowCodeModal(true);
+              }}
               className="text-slate-500 hover:text-slate-800 font-semibold inline-flex items-center gap-1 transition-colors"
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>Enter activation code</span>
+              <span>Enter confirmation code</span>
             </button>
           </div>
 
         </div>
       </div>
+
+      {/* POP-UP OPTION FOR CONFIRMATION CODE */}
+      {showCodeModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 relative animate-in zoom-in-95 duration-150">
+            
+            {/* Close button */}
+            <button
+              onClick={() => setShowCodeModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-colors"
+              title="Close popup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Prompt Notice Box */}
+            <div className="p-4 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2 text-center">
+              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center mx-auto shadow-sm">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-extrabold text-blue-950">
+                  Ask your founder for the login code for the CRM.
+                </h3>
+                <p className="text-xs text-blue-800/80 mt-1 leading-relaxed">
+                  This activation code is issued directly by your company founder. The code is needed <strong>only once</strong> to activate your employee account. Once entered, you will gain access to the CRM.
+                </p>
+              </div>
+            </div>
+
+            {/* Error Message inside modal */}
+            {codeError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{codeError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyCodeSubmit} className="space-y-4">
+              
+              {/* Registered Email */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Registered Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={pendingUserEmail}
+                  onChange={(e) => setPendingUserEmail(e.target.value)}
+                  placeholder="name@caventra.com"
+                  className="mt-1 block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                />
+              </div>
+
+              {/* Password if not yet entered */}
+              {!password && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Account Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your registered password"
+                    className="mt-1 block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
+                  />
+                </div>
+              )}
+
+              {/* Confirmation Code Input (Confidential: Zero Mention of the Code Value!) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700">
+                  Enter the confirmation code
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={confirmationCode}
+                  onChange={(e) => setConfirmationCode(e.target.value.toUpperCase())}
+                  placeholder="Enter confirmation code"
+                  className="mt-1 block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono font-bold tracking-widest uppercase"
+                />
+              </div>
+
+              {/* Verify & Enter CRM Button */}
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={codeLoading}
+                  className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {codeLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Verifying & Accessing CRM...</span>
+                    </>
+                  ) : (
+                    <span>Verify & Access CRM</span>
+                  )}
+                </button>
+              </div>
+
+            </form>
+
+            <div className="pt-1 text-center">
+              <button
+                type="button"
+                onClick={() => setShowCodeModal(false)}
+                className="text-xs text-slate-500 hover:text-slate-800 font-semibold"
+              >
+                Cancel and return to sign in
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

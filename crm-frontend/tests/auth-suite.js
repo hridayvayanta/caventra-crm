@@ -144,7 +144,15 @@ console.log('================================================================\n'
 resetStore();
 
 // --- PREDEFINED FOUNDER LOGIN TESTS ---
-test('Founder 1 direct access (hridayvayanta@gmail.com)', () => {
+test('Founder 1 direct access (hridayvayanta7@gmail.com)', () => {
+  const email = 'hridayvayanta7@gmail.com';
+  const pass = 'hridaycaventra@0000';
+  const cred = STATIC_FOUNDER_CREDENTIALS[email];
+  assert(cred && cred.password === pass, 'Credentials must match');
+  assert(cred.role === 'founder', 'Must have founder role');
+});
+
+test('Founder 1 direct access fallback (hridayvayanta@gmail.com)', () => {
   const email = 'hridayvayanta@gmail.com';
   const pass = 'hridaycaventra@0000';
   const cred = STATIC_FOUNDER_CREDENTIALS[email];

@@ -122,18 +122,15 @@ export const ActivationView: React.FC<ActivationViewProps> = ({
 
             {/* Activation Code Input */}
             <div>
-              <div className="flex items-center justify-between">
-                <label className="block text-xs font-semibold text-slate-700">
-                  Founder Activation Code
-                </label>
-                <span className="text-[10px] text-slate-400 font-mono">Code: 001100</span>
-              </div>
+              <label className="block text-xs font-semibold text-slate-700">
+                Enter the confirmation code
+              </label>
               <input
                 type="text"
                 required
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="e.g. 001100"
+                placeholder="Enter confirmation code"
                 className="mt-1 block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono font-bold tracking-widest uppercase"
               />
             </div>

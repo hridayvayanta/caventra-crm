@@ -731,6 +731,20 @@ export const verifyActivationCode = async (
   };
 };
 
+// Activate and Login in one seamless step
+export const activateAndLoginEmployee = async (
+  email: string,
+  pass: string,
+  code: string
+): Promise<{ success: boolean; user: User }> => {
+  // 1. Verify code and activate account
+  await verifyActivationCode(email, code);
+
+  // 2. Perform login and return user profile
+  const loginRes = await loginUser(email, pass);
+  return loginRes;
+};
+
 // ==========================================
 // 7. Subscribe to Pending Registrations (Founder View)
 // ==========================================
