@@ -2,18 +2,14 @@ import { Lead, User, Activity } from '../types/crm';
 
 export const INITIAL_USERS: User[] = [
   {
-    id: 'user_1',
+    id: 'user_founder_1',
     name: 'Hriday Vayanta',
     email: 'hriday@caventra.com',
-    role: 'admin',
+    role: 'founder',
+    status: 'active',
+    phoneNumber: '+91 9876543210',
     initials: 'HV',
-  },
-  {
-    id: 'user_2',
-    name: 'Team Member',
-    email: 'team@caventra.com',
-    role: 'employee',
-    initials: 'TM',
+    createdAt: '2026-01-01T00:00:00.000Z',
   },
 ];
 

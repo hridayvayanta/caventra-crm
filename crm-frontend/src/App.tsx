@@ -24,6 +24,11 @@ import {
   recordContactCompletion, 
   completeFollowUpTask 
 } from './services/db';
+import { 
+  getCurrentSessionUser, 
+  logoutUser, 
+  subscribeAllUsers 
+} from './services/auth';
 import { isFirebaseConfigured } from './services/firebase';
 import { Navbar } from './components/Navbar';
 import { StatsRow } from './components/StatsRow';
@@ -37,24 +42,35 @@ import { ContactCompletionModal } from './components/ContactCompletionModal';
 import { FollowUpTasksView } from './components/FollowUpTasksView';
 import { ImportHistoryView } from './components/ImportHistoryView';
 import { DriveImportStatusView } from './components/DriveImportStatusView';
+import { PendingRegistrationsView } from './components/PendingRegistrationsView';
+import { LoginView } from './components/auth/LoginView';
+import { RegisterView } from './components/auth/RegisterView';
+import { ActivationView } from './components/auth/ActivationView';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsConditions } from './components/TermsConditions';
-import { Shield, FileText, Database, CheckCircle2 } from 'lucide-react';
+import { Shield, FileText, CheckCircle2, ShieldAlert, LogOut } from 'lucide-react';
 
 export function App() {
+  // Authentication & Session State
+  const [currentUser, setCurrentUser] = useState<User | null>(() => getCurrentSessionUser());
+  const [authScreen, setAuthScreen] = useState<'login' | 'register' | 'activation'>('login');
+  const [activationPrefillEmail, setActivationPrefillEmail] = useState<string>('');
+  const [loginNotice, setLoginNotice] = useState<string | null>(null);
+  const [allUsers, setAllUsers] = useState<User[]>(INITIAL_USERS);
+
+  // CRM Data State
   const [leads, setLeads] = useState<Lead[]>([]);
   const [followUps, setFollowUps] = useState<FollowUpTask[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [importHistory, setImportHistory] = useState<ImportRecord[]>([]);
   const [ingestionJobs, setIngestionJobs] = useState<IngestionJob[]>([]);
 
-  const [users] = useState<User[]>(INITIAL_USERS);
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
-
+  // Navigation & View Mode
   const [currentSection, setCurrentSection] = useState<LeadSection>('all');
   const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
   const [activeLegalPage, setActiveLegalPage] = useState<'privacy' | 'terms' | null>(null);
 
+  // Search & Modals
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [contactingLead, setContactingLead] = useState<Lead | null>(null);
@@ -63,8 +79,31 @@ export function App() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Subscribe to real-time database updates
+  // Real-time synchronization for users
   useEffect(() => {
+    const unsubUsers = subscribeAllUsers((usersList) => {
+      setAllUsers(usersList);
+      if (currentUser) {
+        const fresh = usersList.find(u => u.id === currentUser.id || u.email === currentUser.email);
+        if (fresh) {
+          setCurrentUser(fresh);
+        }
+      }
+    });
+
+    return () => unsubUsers();
+  }, [currentUser?.id]);
+
+  // Subscribe to real-time CRM database collections ONLY when user is authorized
+  const isAuthorized = currentUser && (
+    currentUser.role === 'founder' || 
+    currentUser.role === 'admin' || 
+    currentUser.status === 'active'
+  );
+
+  useEffect(() => {
+    if (!isAuthorized) return;
+
     const unsubLeads = subscribeLeads(setLeads);
     const unsubFollowUps = subscribeFollowUps(setFollowUps);
     const unsubActivities = subscribeActivities(null, setActivities);
@@ -78,12 +117,116 @@ export function App() {
       unsubHistory();
       unsubJobs();
     };
-  }, []);
+  }, [isAuthorized]);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
   };
+
+  const handleLogout = async () => {
+    await logoutUser();
+    setCurrentUser(null);
+    setAuthScreen('login');
+    showNotification('Signed out of CRM workspace.');
+  };
+
+  // ==========================================
+  // Unauthenticated / Auth Screens Handling
+  // ==========================================
+  if (!currentUser) {
+    if (authScreen === 'register') {
+      return (
+        <RegisterView
+          onSwitchToLogin={() => setAuthScreen('login')}
+          onRegistered={(registeredUser) => {
+            setActivationPrefillEmail(registeredUser.email);
+            setAuthScreen('activation');
+            showNotification('Registration submitted! Ask your founder for the login code.');
+          }}
+        />
+      );
+    }
+
+    if (authScreen === 'activation') {
+      return (
+        <ActivationView
+          initialEmail={activationPrefillEmail}
+          onSwitchToLogin={(msg) => {
+            setLoginNotice(msg || 'Account activated. Please sign in with your password.');
+            setAuthScreen('login');
+          }}
+        />
+      );
+    }
+
+    return (
+      <LoginView
+        initialMessage={loginNotice}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          showNotification(`Welcome, ${user.name}`);
+        }}
+        onSwitchToRegister={() => {
+          setLoginNotice(null);
+          setAuthScreen('register');
+        }}
+        onSwitchToActivation={(email) => {
+          if (email) setActivationPrefillEmail(email);
+          setAuthScreen('activation');
+        }}
+      />
+    );
+  }
+
+  // ==========================================
+  // Session Access Controls
+  // ==========================================
+
+  // Pending Activation Guard
+  if (currentUser.status === 'pending_activation') {
+    return (
+      <ActivationView
+        initialEmail={currentUser.email}
+        onSwitchToLogin={async (msg) => {
+          await logoutUser();
+          setCurrentUser(null);
+          setLoginNotice(msg || null);
+          setAuthScreen('login');
+        }}
+      />
+    );
+  }
+
+  // Suspended / Disabled Account Guard
+  if (currentUser.status === 'suspended' || currentUser.status === 'disabled') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-['Plus_Jakarta_Sans',sans-serif]">
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 max-w-md w-full shadow-sm text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Access Denied</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Your employee account has been suspended or disabled by the company founder.
+            </p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Return to Login Screen</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // Authorized CRM Workspace
+  // ==========================================
 
   // Section Filtering Logic (Requirement B)
   const getSectionLeads = () => {
@@ -209,6 +352,7 @@ export function App() {
 
   const pendingFollowUpsCount = followUps.filter(t => t.status === 'pending').length;
   const newLeadsCount = leads.filter(l => l.status === 'new').length;
+  const pendingRegistrationsCount = allUsers.filter(u => u.status === 'pending_activation').length;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
@@ -232,13 +376,15 @@ export function App() {
         setViewMode={setViewMode}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        users={users}
+        users={allUsers}
         currentUser={currentUser}
         setCurrentUser={setCurrentUser}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenImportModal={() => setIsImportModalOpen(true)}
+        onLogout={handleLogout}
         followUpsCount={pendingFollowUpsCount}
         newLeadsCount={newLeadsCount}
+        pendingCount={pendingRegistrationsCount}
       />
 
       {/* Main Content Area */}
@@ -257,7 +403,10 @@ export function App() {
         {!activeLegalPage && (
           <>
             {/* Top Metrics Row (Visible across lead views) */}
-            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && currentSection !== 'drive_import_status' && (
+            {currentSection !== 'follow_ups' && 
+             currentSection !== 'import_history' && 
+             currentSection !== 'drive_import_status' && 
+             currentSection !== 'pending_registrations' && (
               <StatsRow leads={leads} />
             )}
 
@@ -280,6 +429,12 @@ export function App() {
                 jobs={ingestionJobs}
                 currentUser={currentUser}
               />
+            ) : currentSection === 'pending_registrations' ? (
+              /* Founder-only: Pending Employee Registrations */
+              <PendingRegistrationsView
+                allUsers={allUsers}
+                currentUser={currentUser}
+              />
             ) : leads.length === 0 ? (
               /* Empty Dashboard with prominent Excel Import & Add Lead actions */
               <EmptyState
@@ -293,7 +448,7 @@ export function App() {
             ) : viewMode === 'board' ? (
               <LeadBoard
                 leads={filteredLeads}
-                users={users}
+                users={allUsers}
                 onSelectLead={(l) => setSelectedLead(l)}
                 onUpdateStatus={handleUpdateStatus}
                 onOpenContactModal={(l) => setContactingLead(l)}
@@ -301,7 +456,7 @@ export function App() {
             ) : (
               <LeadListView
                 leads={filteredLeads}
-                users={users}
+                users={allUsers}
                 onSelectLead={(l) => setSelectedLead(l)}
                 onUpdateStatus={handleUpdateStatus}
                 onOpenContactModal={(l) => setContactingLead(l)}
@@ -318,7 +473,7 @@ export function App() {
       <LeadModal
         lead={selectedLead}
         onClose={() => setSelectedLead(null)}
-        users={users}
+        users={allUsers}
         currentUser={currentUser}
         onUpdateStatus={handleUpdateStatus}
         onUpdateAssignee={handleUpdateAssignee}
@@ -367,7 +522,7 @@ export function App() {
             <span className="font-bold text-slate-800">CAVENTRA CRM</span>
             <span>•</span>
             <span className="font-mono text-[11px]">
-              {isFirebaseConfigured() ? 'Cloud Firestore Active' : 'Local Storage Mode'}
+              {isFirebaseConfigured() ? 'Cloud Firestore & Auth Active' : 'Offline Secure Mode'}
             </span>
           </div>
 

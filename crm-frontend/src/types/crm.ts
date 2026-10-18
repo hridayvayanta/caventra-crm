@@ -16,17 +16,41 @@ export type LeadSection =
   | 'won' 
   | 'lost'
   | 'import_history'
-  | 'drive_import_status';
+  | 'drive_import_status'
+  | 'pending_registrations';
 
 export type LeadPriority = 'normal' | 'high' | 'urgent';
-export type UserRole = 'admin' | 'employee';
+export type UserRole = 'founder' | 'admin' | 'employee';
+export type UserStatus = 'pending_activation' | 'active' | 'suspended' | 'disabled';
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  phoneNumber?: string;
   role: UserRole;
+  status: UserStatus;
   initials: string;
+  createdAt: string;
+  activatedAt?: string;
+  activatedBy?: string;
+  registeredAt?: string;
+}
+
+export interface ActivationCodeRecord {
+  id: string;
+  employeeUid: string;
+  employeeEmail: string;
+  employeeName: string;
+  codeHash: string;
+  issuedByUid: string;
+  issuedByName: string;
+  issuedAt: string;
+  expiresAt: string;
+  used: boolean;
+  usedAt?: string;
+  revoked: boolean;
+  failedAttempts: number;
 }
 
 export type ContactMethod = 'phone' | 'email' | 'whatsapp' | 'other';

@@ -14,7 +14,9 @@ import {
   List,
   Sparkles,
   History,
-  FolderSync
+  FolderSync,
+  LogOut,
+  UserCheck
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,8 +31,10 @@ interface NavbarProps {
   setCurrentUser: (user: User) => void;
   onOpenAddModal: () => void;
   onOpenImportModal: () => void;
+  onLogout: () => void;
   followUpsCount: number;
   newLeadsCount: number;
+  pendingCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -45,9 +49,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   setCurrentUser,
   onOpenAddModal,
   onOpenImportModal,
+  onLogout,
   followUpsCount,
   newLeadsCount,
+  pendingCount = 0,
 }) => {
+  const isFounder = currentUser.role === 'founder' || currentUser.role === 'admin';
+
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
       
@@ -92,7 +100,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2.5">
             
             {/* View Mode Toggle (Board vs List) */}
-            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && currentSection !== 'drive_import_status' && (
+            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && currentSection !== 'drive_import_status' && currentSection !== 'pending_registrations' && (
               <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
                 <button
                   onClick={() => setViewMode('board')}
@@ -140,25 +148,30 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Add Lead</span>
             </button>
 
-            {/* User Account / Role Badge */}
-            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+            {/* User Account / Role Badge & Logout */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center font-mono">
                 {currentUser.initials}
               </div>
-              <select
-                value={currentUser.id}
-                onChange={(e) => {
-                  const u = users.find(x => x.id === e.target.value);
-                  if (u) setCurrentUser(u);
-                }}
-                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+              <div className="hidden sm:block text-left">
+                <p className="text-xs font-bold text-slate-800 leading-none truncate max-w-[120px]">
+                  {currentUser.name}
+                </p>
+                <span className={`inline-block text-[9px] font-bold font-mono uppercase px-1 py-0.2 rounded mt-0.5 ${
+                  isFounder ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {isFounder ? 'Founder' : 'Employee'}
+                </span>
+              </div>
+
+              {/* Sign Out Button */}
+              <button
+                onClick={onLogout}
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+                title="Sign out of CRM session"
               >
-                {users.map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
 
           </div>
@@ -299,6 +312,25 @@ export const Navbar: React.FC<NavbarProps> = ({
               Admin
             </span>
           </button>
+
+          {isFounder && (
+            <button
+              onClick={() => setCurrentSection('pending_registrations')}
+              className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+                currentSection === 'pending_registrations'
+                  ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+              <span>Pending Registrations</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold font-mono">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+          )}
 
         </div>
       </div>
