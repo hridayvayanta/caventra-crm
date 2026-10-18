@@ -68,17 +68,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => setCurrentSection('all')}
             className="flex items-center gap-3.5 shrink-0 cursor-pointer group"
           >
-            <div className="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 shadow-sm flex items-center justify-center transition-all group-hover:border-slate-700">
+            <div className="bg-white p-1 rounded-xl flex items-center justify-center">
               <img
                 src="./caventra-logo.png"
                 alt="CAVENTRA"
-                className="h-10 sm:h-11 w-auto object-contain"
+                className="h-12 sm:h-14 w-auto object-contain"
               />
             </div>
             <div className="hidden sm:block">
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-slate-900 text-lg tracking-tight">CAVENTRA</span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-slate-900 text-amber-300 border border-slate-800 font-mono">
+                <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono">
                   CRM
                 </span>
               </div>

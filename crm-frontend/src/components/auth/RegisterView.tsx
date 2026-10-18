@@ -79,11 +79,11 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
       
       {/* Brand Header */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="inline-flex items-center justify-center bg-slate-950 px-6 py-4 rounded-2xl border border-slate-800 shadow-md mx-auto mb-3">
+        <div className="inline-flex items-center justify-center bg-white px-6 py-3 rounded-2xl border border-slate-200 shadow-sm mx-auto mb-3">
           <img
             src="./caventra-logo.png"
             alt="CAVENTRA"
-            className="h-14 sm:h-16 w-auto object-contain"
+            className="h-16 sm:h-20 w-auto object-contain"
           />
         </div>
         <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
