@@ -1,4 +1,4 @@
-import { Lead, User, Activity, IngestionBatch } from '../types/crm';
+import { Lead, User, Activity } from '../types/crm';
 
 export const INITIAL_USERS: User[] = [
   {
@@ -19,5 +19,4 @@ export const INITIAL_USERS: User[] = [
 
 // No demo data — starts clean
 export const INITIAL_LEADS: Lead[] = [];
-export const INITIAL_BATCHES: IngestionBatch[] = [];
 export const INITIAL_ACTIVITIES: Activity[] = [];

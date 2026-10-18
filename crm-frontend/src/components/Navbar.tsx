@@ -1,16 +1,24 @@
 import React from 'react';
-import { User } from '../types/crm';
+import { User, LeadSection } from '../types/crm';
 import { 
-  Building2, 
+  FileSpreadsheet, 
   Search, 
-  LayoutGrid, 
-  List, 
   Plus, 
+  Users, 
+  PhoneCall, 
+  CalendarClock, 
+  Clock, 
+  CheckCircle, 
+  XCircle, 
+  LayoutGrid, 
+  List,
   Sparkles,
-  ChevronDown
+  History
 } from 'lucide-react';
 
 interface NavbarProps {
+  currentSection: LeadSection;
+  setCurrentSection: (section: LeadSection) => void;
   viewMode: 'board' | 'list';
   setViewMode: (mode: 'board' | 'list') => void;
   searchQuery: string;
@@ -19,13 +27,14 @@ interface NavbarProps {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   onOpenAddModal: () => void;
-  onTriggerHarvest: () => void;
-  isHarvesting: boolean;
-  onOpenPrivacy: () => void;
-  onOpenTerms: () => void;
+  onOpenImportModal: () => void;
+  followUpsCount: number;
+  newLeadsCount: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
+  currentSection,
+  setCurrentSection,
   viewMode,
   setViewMode,
   searchQuery,
@@ -34,95 +43,105 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   setCurrentUser,
   onOpenAddModal,
-  onTriggerHarvest,
-  isHarvesting,
+  onOpenImportModal,
+  followUpsCount,
+  newLeadsCount,
 }) => {
   return (
-    <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+      
+      {/* Top Primary Navigation Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
           
-          {/* Brand Logo & Name */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-base shadow-sm">
-              C
-            </div>
-            <div>
-              <span className="font-bold text-slate-900 text-base tracking-tight">CAVENTRA</span>
-              <span className="ml-1.5 px-2 py-0.5 text-xs font-semibold rounded bg-slate-100 text-slate-600">
-                CRM
-              </span>
+          {/* Official CAVENTRA Logo & Brand */}
+          <div 
+            onClick={() => setCurrentSection('all')}
+            className="flex items-center gap-3 shrink-0 cursor-pointer"
+          >
+            <img
+              src="./caventra-logo.png"
+              alt="CAVENTRA"
+              className="h-10 w-auto object-contain rounded"
+            />
+            <div className="hidden sm:block">
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-slate-900 text-base tracking-tight">CAVENTRA</span>
+                <span className="px-1.5 py-0.2 text-[10px] font-bold uppercase rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  CRM
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono -mt-0.5">Web Infrastructure & Lead Pipeline</p>
             </div>
           </div>
 
-          {/* Search Box - Large, clear and friendly */}
+          {/* Large Search Box */}
           <div className="relative flex-1 max-w-md hidden md:block">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search companies, phone, city..."
+              placeholder="Search by company, website, contact, phone, or city..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium"
             />
           </div>
 
-          {/* Controls & Actions */}
+          {/* Action Controls & Primary Actions */}
           <div className="flex items-center gap-2.5">
             
             {/* View Mode Toggle (Board vs List) */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
-              <button
-                onClick={() => setViewMode('board')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                  viewMode === 'board'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Board View"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Board</span>
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                  viewMode === 'list'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="List View"
-              >
-                <List className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">List</span>
-              </button>
-            </div>
+            {currentSection !== 'follow_ups' && currentSection !== 'import_history' && (
+              <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  onClick={() => setViewMode('board')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    viewMode === 'board'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Board View"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Board</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                    viewMode === 'list'
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="List View"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>List</span>
+                </button>
+              </div>
+            )}
 
-            {/* Run Auto Ingestion */}
+            {/* Clearly Visible "Import Excel" Button */}
             <button
-              onClick={onTriggerHarvest}
-              disabled={isHarvesting}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-300 transition-all disabled:opacity-50"
-              title="Search for new prospective clients"
+              onClick={onOpenImportModal}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300 transition-all shadow-sm"
+              title="Import leads from .xlsx, .xls, or .csv"
             >
-              <Sparkles className={`w-3.5 h-3.5 text-blue-600 ${isHarvesting ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">
-                {isHarvesting ? 'Finding Leads...' : 'Find New Leads'}
-              </span>
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Import Excel</span>
             </button>
 
-            {/* Add Lead Primary Button */}
+            {/* Add Lead Button */}
             <button
               onClick={onOpenAddModal}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>Add Lead</span>
             </button>
 
-            {/* Current User Switcher */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center">
+            {/* User Account / Role Badge */}
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200">
+              <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center font-mono">
                 {currentUser.initials}
               </div>
               <select
@@ -131,7 +150,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   const u = users.find(x => x.id === e.target.value);
                   if (u) setCurrentUser(u);
                 }}
-                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
               >
                 {users.map(u => (
                   <option key={u.id} value={u.id}>
@@ -145,6 +164,129 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         </div>
       </div>
+
+      {/* Sub-Navigation: Distinct Lead Sections */}
+      <div className="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 lg:px-8 overflow-x-auto">
+        <div className="max-w-7xl mx-auto flex items-center gap-1 py-1.5 text-xs font-semibold whitespace-nowrap">
+          
+          <button
+            onClick={() => setCurrentSection('all')}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              currentSection === 'all'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            All Leads
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('new')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'new'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <span>New Leads</span>
+            {newLeadsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-bold font-mono">
+                {newLeadsCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('to_contact')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'to_contact'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <PhoneCall className="w-3.5 h-3.5" />
+            <span>To Contact</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('contacted')}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              currentSection === 'contacted'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            Contacted
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('follow_ups')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'follow_ups'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <CalendarClock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Follow-ups</span>
+            {followUpsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 font-bold font-mono">
+                {followUpsCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('in_discussion')}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              currentSection === 'in_discussion'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            In Discussion
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('won')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1 ${
+              currentSection === 'won'
+                ? 'bg-white text-emerald-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Won</span>
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('lost')}
+            className={`px-3 py-1.5 rounded-md transition-all ${
+              currentSection === 'lost'
+                ? 'bg-white text-slate-800 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'
+            }`}
+          >
+            Lost
+          </button>
+
+          <div className="h-4 w-px bg-slate-300 mx-1"></div>
+
+          <button
+            onClick={() => setCurrentSection('import_history')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1 ${
+              currentSection === 'import_history'
+                ? 'bg-white text-slate-900 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <History className="w-3.5 h-3.5 text-slate-500" />
+            <span>Import History</span>
+          </button>
+
+        </div>
+      </div>
+
     </header>
   );
 };

@@ -1,48 +1,56 @@
 import React from 'react';
-import { Plus, Sparkles, Building2, PhoneCall } from 'lucide-react';
+import { Plus, FileSpreadsheet, Building2, Upload } from 'lucide-react';
 
 interface EmptyStateProps {
   onOpenAddModal: () => void;
-  onTriggerHarvest: () => void;
-  isHarvesting: boolean;
+  onOpenImportModal: () => void;
+  filterTitle?: string;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
   onOpenAddModal,
-  onTriggerHarvest,
-  isHarvesting,
+  onOpenImportModal,
+  filterTitle,
 }) => {
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-2xl mx-auto shadow-sm my-8">
-      <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-100 shadow-sm">
-        <Building2 className="w-7 h-7" />
+    <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-xl mx-auto shadow-sm my-8">
+      
+      {/* Official CAVENTRA Monogram Logo */}
+      <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm">
+        <img
+          src="./caventra-logo.png"
+          alt="CAVENTRA"
+          className="w-12 h-12 object-contain"
+        />
       </div>
 
       <h3 className="text-xl font-bold text-slate-900 mb-2">
-        Your pipeline is clean and ready
+        {filterTitle ? `No leads in "${filterTitle}"` : 'Your CAVENTRA CRM is Ready'}
       </h3>
-      <p className="text-slate-500 text-sm max-w-md mx-auto mb-6 leading-relaxed">
-        There are currently no leads in the CRM. You can add a business lead manually, or run the automatic search to find real companies needing website development or security.
+      <p className="text-slate-500 text-xs max-w-md mx-auto mb-6 leading-relaxed">
+        {filterTitle 
+          ? `There are currently no prospects assigned to the ${filterTitle} stage.` 
+          : 'You can import your business lead spreadsheet (.xlsx, .xls, .csv) or register new companies manually to start tracking outreach.'}
       </p>
 
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
         <button
-          onClick={onOpenAddModal}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-sm transition-all"
+          onClick={onOpenImportModal}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm transition-all"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add First Lead</span>
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Import Excel / CSV</span>
         </button>
 
         <button
-          onClick={onTriggerHarvest}
-          disabled={isHarvesting}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm border border-slate-300 transition-all disabled:opacity-50"
+          onClick={onOpenAddModal}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300 transition-all"
         >
-          <Sparkles className={`w-4 h-4 text-blue-600 ${isHarvesting ? 'animate-spin' : ''}`} />
-          <span>{isHarvesting ? 'Searching Web...' : 'Find Leads Automatically'}</span>
+          <Plus className="w-4 h-4" />
+          <span>Add Lead Manually</span>
         </button>
       </div>
+
     </div>
   );
 };

@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User must be authenticated to access CRM collections
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user has an active CAVENTRA employee or admin account
+    function isCaventraUser() {
+      return isAuthenticated() && 
+        (request.auth.token.email.matches('.*@caventra[.]com$') || 
+         exists(/databases/$(database)/documents/users/$(request.auth.uid)));
+    }
+
+    // Leads collection: Read & Write for authenticated team members
+    match /leads/{leadId} {
+      allow read: if isCaventraUser();
+      allow create: if isCaventraUser() && request.resource.data.businessName != null;
+      allow update: if isCaventraUser();
+      allow delete: if isCaventraUser();
+    }
+
+    // Follow-up tasks: Read & Write for authenticated team members
+    match /follow_ups/{taskId} {
+      allow read: if isCaventraUser();
+      allow create, update: if isCaventraUser();
+      allow delete: if isCaventraUser();
+    }
+
+    // Audit and Contact Activities: Read & Create only (Append-only audit trail)
+    match /activities/{activityId} {
+      allow read: if isCaventraUser();
+      allow create: if isCaventraUser();
+      allow update, delete: if false; // Immutable audit records
+    }
+
+    // Import audit history
+    match /import_history/{historyId} {
+      allow read: if isCaventraUser();
+      allow create: if isCaventraUser();
+      allow update, delete: if false;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}

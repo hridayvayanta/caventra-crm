@@ -9,7 +9,7 @@ interface StatsRowProps {
 export const StatsRow: React.FC<StatsRowProps> = ({ leads }) => {
   const total = leads.length;
   const newCount = leads.filter(l => l.status === 'new').length;
-  const inProgressCount = leads.filter(l => l.status === 'contacted' || l.status === 'in_progress').length;
+  const inProgressCount = leads.filter(l => l.status === 'contacted' || l.status === 'in_discussion').length;
   const wonCount = leads.filter(l => l.status === 'won').length;
 
   return (

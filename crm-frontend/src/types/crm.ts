@@ -1,4 +1,22 @@
-export type LeadStatus = 'new' | 'contacted' | 'in_progress' | 'won' | 'lost';
+export type LeadStatus = 
+  | 'new' 
+  | 'to_contact' 
+  | 'contacted' 
+  | 'in_discussion' 
+  | 'won' 
+  | 'lost';
+
+export type LeadSection = 
+  | 'all' 
+  | 'new' 
+  | 'to_contact' 
+  | 'contacted' 
+  | 'follow_ups' 
+  | 'in_discussion' 
+  | 'won' 
+  | 'lost'
+  | 'import_history';
+
 export type LeadPriority = 'normal' | 'high' | 'urgent';
 export type UserRole = 'admin' | 'employee';
 
@@ -10,14 +28,50 @@ export interface User {
   initials: string;
 }
 
+export type ContactMethod = 'phone' | 'email' | 'whatsapp' | 'other';
+
+export type ContactOutcome = 
+  | 'no_answer' 
+  | 'spoke' 
+  | 'interested' 
+  | 'not_interested' 
+  | 'asked_follow_up';
+
+export type NextContactAction = 
+  | 'schedule_follow_up' 
+  | 'move_to_discussion' 
+  | 'keep_contacted' 
+  | 'close_as_lost';
+
 export interface Activity {
   id: string;
   leadId: string;
-  type: 'note' | 'call' | 'email' | 'status_change';
+  type: 'contact' | 'follow_up' | 'note' | 'status_change' | 'import';
   title: string;
   description: string;
   performedBy: string;
+  performedByEmail?: string;
   timestamp: string;
+  contactMethod?: ContactMethod;
+  outcome?: ContactOutcome;
+}
+
+export interface FollowUpTask {
+  id: string;
+  leadId: string;
+  businessName: string;
+  website: string;
+  businessPhone?: string | null;
+  businessEmail?: string | null;
+  contactName?: string | null;
+  assignedTo: string;
+  dueDate: string; // YYYY-MM-DD
+  dueTime?: string; // HH:mm
+  reason: string;
+  status: 'pending' | 'completed' | 'cancelled';
+  createdAt: string;
+  completedAt?: string;
+  completedBy?: string;
 }
 
 export interface Lead {
@@ -30,23 +84,38 @@ export interface Lead {
   businessPhone?: string | null;
   city: string;
   country: string;
-  websiteCondition: string; // Plain English: e.g. "Website is not mobile-friendly"
-  serviceOpportunity: string; // e.g. "Website Redesign", "Maintenance", "Security"
+  industry?: string;
+  websiteCondition: string;
+  serviceOpportunity: string;
   status: LeadStatus;
   priority: LeadPriority;
   assignedTo?: string | null;
+  lastContactDate?: string | null;
+  nextFollowUpDate?: string | null; // YYYY-MM-DD or ISO
+  nextFollowUpTime?: string | null; // HH:mm
   estimatedValue?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface IngestionBatch {
+export interface ImportRecord {
   id: string;
-  source: string;
+  fileName: string;
   timestamp: string;
-  leadsHarvested: number;
-  newLeads: number;
-  duplicatesSkipped: number;
-  status: 'completed' | 'running' | 'failed';
+  totalRows: number;
+  importedCount: number;
+  duplicateCount: number;
+  rejectedCount: number;
+  status: 'success' | 'partial' | 'failed';
+  errorMessage?: string;
+}
+
+export interface ContactCompletionFormValues {
+  method: ContactMethod;
+  outcome: ContactOutcome;
+  notes: string;
+  nextAction: NextContactAction;
+  followUpDate: string;
+  followUpTime: string;
 }

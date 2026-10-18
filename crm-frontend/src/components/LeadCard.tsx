@@ -6,6 +6,8 @@ import {
   Mail, 
   MapPin, 
   AlertCircle,
+  Calendar,
+  CheckCircle2,
   Clock
 } from 'lucide-react';
 
@@ -14,6 +16,7 @@ interface LeadCardProps {
   users: User[];
   onSelectLead: (lead: Lead) => void;
   onUpdateStatus: (leadId: string, status: LeadStatus) => void;
+  onOpenContactModal: (lead: Lead) => void;
 }
 
 export const LeadCard: React.FC<LeadCardProps> = ({
@@ -21,8 +24,9 @@ export const LeadCard: React.FC<LeadCardProps> = ({
   users,
   onSelectLead,
   onUpdateStatus,
+  onOpenContactModal,
 }) => {
-  const assigned = users.find(u => u.id === lead.assignedTo);
+  const isOverdue = lead.nextFollowUpDate && new Date(lead.nextFollowUpDate) < new Date();
 
   return (
     <div 
@@ -47,7 +51,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2.5">
         <MapPin className="w-3.5 h-3.5 text-slate-400" />
         <span>{lead.city}, {lead.country}</span>
       </div>
@@ -63,29 +67,43 @@ export const LeadCard: React.FC<LeadCardProps> = ({
         </p>
       </div>
 
-      {/* Quick Action Contact Buttons */}
-      <div className="flex items-center gap-2 mb-3">
-        {lead.businessPhone && (
-          <a
-            href={`tel:${lead.businessPhone}`}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-md border border-slate-200 transition-colors"
-          >
-            <Phone className="w-3 h-3 text-slate-600" />
-            <span>Call</span>
-          </a>
-        )}
-        {lead.businessEmail && (
-          <a
-            href={`mailto:${lead.businessEmail}`}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-md border border-slate-200 transition-colors"
-          >
-            <Mail className="w-3 h-3 text-slate-600" />
-            <span>Email</span>
-          </a>
-        )}
+      {/* Contact Completion Action - Clearly Labeled */}
+      <div className="mb-3">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenContactModal(lead);
+          }}
+          className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold border border-blue-200 transition-colors"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+          <span>Mark Contact Completed</span>
+        </button>
       </div>
+
+      {/* Follow-up & Contact Date Badges */}
+      {(lead.nextFollowUpDate || lead.lastContactDate) && (
+        <div className="mb-3 space-y-1 text-[11px] font-mono">
+          {lead.nextFollowUpDate && (
+            <div className={`flex items-center justify-between p-1.5 rounded ${
+              isOverdue ? 'bg-rose-50 text-rose-700 border border-rose-200 font-bold' : 'bg-slate-50 text-slate-700 border border-slate-200'
+            }`}>
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                <span>Next Follow-up:</span>
+              </span>
+              <span>{lead.nextFollowUpDate} {lead.nextFollowUpTime || ''}</span>
+            </div>
+          )}
+          {lead.lastContactDate && (
+            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />
+              <span>Last contact: {new Date(lead.lastContactDate).toLocaleDateString()}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Footer: Value & Easy Status Changer */}
       <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
@@ -93,7 +111,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({
           ₹{(lead.estimatedValue || 0).toLocaleString('en-IN')}
         </div>
 
-        {/* 1-click status dropdown right on the card! */}
+        {/* 1-click status dropdown */}
         <select
           value={lead.status}
           onClick={(e) => e.stopPropagation()}
@@ -101,8 +119,9 @@ export const LeadCard: React.FC<LeadCardProps> = ({
           className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
         >
           <option value="new">New</option>
+          <option value="to_contact">To Contact</option>
           <option value="contacted">Contacted</option>
-          <option value="in_progress">In Progress</option>
+          <option value="in_discussion">In Discussion</option>
           <option value="won">Won Deal</option>
           <option value="lost">Lost</option>
         </select>
