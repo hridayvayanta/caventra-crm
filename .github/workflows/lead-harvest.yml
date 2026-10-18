@@ -1,0 +1,30 @@
+name: 🤖 CAVENTRA Autonomous Daily Lead Harvest
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # Triggered every day at 08:00 AM UTC
+  workflow_dispatch:     # Also triggerable manually in GitHub UI anytime
+
+jobs:
+  harvest-leads:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Harvester Packages
+        working-directory: harvester
+        run: npm install
+
+      - name: Run Autonomous Gemini Lead Discovery
+        working-directory: harvester
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CAVENTRA_API_URL: ${{ secrets.CAVENTRA_API_URL }}
+          CAVENTRA_INGEST_SECRET: ${{ secrets.CAVENTRA_INGEST_SECRET }}
+        run: node harvest.mjs
