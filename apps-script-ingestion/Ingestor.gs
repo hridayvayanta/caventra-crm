@@ -155,6 +155,11 @@ var Ingestor = (function () {
         var file = files.next();
         filesFound++;
 
+        // Skip internal temporary converted sheets
+        if (file.getName().indexOf('[Converted]') === 0) {
+          continue;
+        }
+
         if (isFileProcessed(file)) {
           Logger.log('Skipping previously processed file: ' + file.getName());
           continue;
@@ -204,9 +209,23 @@ var Ingestor = (function () {
         Logger.log('Warning: Could not write initial ingestion job: ' + e.message);
       }
 
+      var lowerName = fileName.toLowerCase();
+      var isGoogleSheet = (mimeType === MimeType.GOOGLE_SHEETS);
+      var isExcel = (
+        mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        mimeType === 'application/vnd.ms-excel' ||
+        lowerName.endsWith('.xlsx') ||
+        lowerName.endsWith('.xls')
+      );
+      var isCsv = (
+        mimeType === 'text/csv' ||
+        mimeType === 'application/csv' ||
+        lowerName.endsWith('.csv')
+      );
+
       // Check format
-      if (mimeType !== MimeType.GOOGLE_SHEETS) {
-        var errMsg = 'Unsupported format: "' + mimeType + '". Please save as a native Google Sheet.';
+      if (!isGoogleSheet && !isExcel && !isCsv) {
+        var errMsg = 'Unsupported format: "' + mimeType + '" (' + fileName + '). Supported formats are Excel (.xlsx, .xls), CSV (.csv), and Google Sheets.';
         job.status = 'failed';
         job.errors.push(errMsg);
         job.completedAt = new Date().toISOString();
@@ -215,20 +234,55 @@ var Ingestor = (function () {
         return { success: false, error: errMsg };
       }
 
-      // Open Spreadsheet
-      var spreadsheet;
+      // Open Spreadsheet (directly for Google Sheets, or via Drive API conversion for Excel/CSV)
+      var spreadsheet = null;
+      var tempConvertedId = null;
+
       try {
-        spreadsheet = SpreadsheetApp.open(file);
+        if (isGoogleSheet) {
+          spreadsheet = SpreadsheetApp.open(file);
+        } else {
+          Logger.log('Converting Excel/CSV "' + fileName + '" to Google Sheet for parsing...');
+          if (typeof Drive !== 'undefined' && Drive.Files && Drive.Files.insert) {
+            var blob = file.getBlob();
+            var parents = [];
+            var parentIter = file.getParents();
+            if (parentIter.hasNext()) {
+              parents.push({ id: parentIter.next().getId() });
+            }
+            var tempSheet = Drive.Files.insert(
+              {
+                title: '[Converted] ' + fileName,
+                mimeType: MimeType.GOOGLE_SHEETS,
+                parents: parents
+              },
+              blob,
+              { convert: true }
+            );
+            tempConvertedId = tempSheet.id;
+            spreadsheet = SpreadsheetApp.openById(tempConvertedId);
+          } else {
+            throw new Error('Drive Advanced Service is not enabled. Open Services in Apps Script and enable Drive.');
+          }
+        }
       } catch (err) {
+        if (tempConvertedId) {
+          try { DriveApp.getFileById(tempConvertedId).setTrashed(true); } catch (e) {}
+        }
+        var errMsg = 'Cannot parse "' + fileName + '": ' + err.message + '. Tip: You can also right-click the Excel file in Google Drive and select "Open with > Google Sheets".';
         job.status = 'failed';
-        job.errors.push('Cannot open spreadsheet: ' + err.message);
+        job.errors.push(errMsg);
         job.completedAt = new Date().toISOString();
         FirestoreClient.upsertDocument('ingestionJobs', fileId, job);
-        return { success: false, error: err.message };
+        Logger.log('❌ ' + errMsg);
+        return { success: false, error: errMsg };
       }
 
       var sheets = spreadsheet.getSheets();
       if (!sheets || sheets.length === 0) {
+        if (tempConvertedId) {
+          try { DriveApp.getFileById(tempConvertedId).setTrashed(true); } catch (e) {}
+        }
         job.status = 'failed';
         job.errors.push('Spreadsheet has no sheets.');
         job.completedAt = new Date().toISOString();
@@ -238,6 +292,15 @@ var Ingestor = (function () {
 
       var sheet = sheets[0];
       var data = sheet.getDataRange().getValues();
+
+      // Clean up temporary converted Google Sheet if one was created
+      if (tempConvertedId) {
+        try {
+          DriveApp.getFileById(tempConvertedId).setTrashed(true);
+        } catch (cleanupErr) {
+          Logger.log('Notice: Could not trash temporary sheet: ' + cleanupErr.message);
+        }
+      }
 
       if (!data || data.length < 2) {
         job.status = 'failed';
