@@ -3,12 +3,8 @@ import { Lead, User } from '../types/crm';
 import { 
   CalendarClock, 
   AlertTriangle, 
-  CheckCircle2, 
-  Building2, 
-  Phone, 
-  Mail, 
-  ArrowRight,
-  ExternalLink
+  Calendar,
+  ArrowRight
 } from 'lucide-react';
 
 interface FollowUpCalendarProps {
@@ -29,49 +25,47 @@ export const FollowUpCalendar: React.FC<FollowUpCalendarProps> = ({
     .sort((a, b) => (a.nextFollowUpDate! > b.nextFollowUpDate! ? 1 : -1));
 
   const overdueLeads = leadsWithFollowUps.filter(l => l.nextFollowUpDate! < todayStr);
-  const todayLeads = leadsWithFollowUps.filter(l => l.nextFollowUpDate! === todayStr);
-  const upcomingLeads = leadsWithFollowUps.filter(l => l.nextFollowUpDate! > todayStr);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       
       {/* Overdue Section */}
       {overdueLeads.length > 0 && (
-        <div className="bg-rose-950/30 border border-rose-500/30 rounded-2xl p-5 shadow-lg">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="w-5 h-5 text-rose-400" />
-            <h3 className="font-bold text-white text-sm">
-              Critical: Overdue Outreach Follow-ups ({overdueLeads.length})
+        <div className="bg-neutral-900 border border-rose-900/60 rounded p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400" />
+            <h3 className="font-semibold text-white text-xs uppercase tracking-wider">
+              Overdue Outreach Tasks ({overdueLeads.length})
             </h3>
           </div>
-          <p className="text-xs text-rose-200/80 mb-4">
-            These leads had follow-ups scheduled in the past that have not been logged yet.
+          <p className="text-xs text-neutral-400 mb-3">
+            The scheduled follow-up dates for these organizations have elapsed without an updated activity log.
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {overdueLeads.map(lead => {
               const assigned = users.find(u => u.id === lead.assignedTo);
               return (
                 <div
                   key={lead.id}
                   onClick={() => onSelectLead(lead)}
-                  className="bg-slate-900/90 border border-rose-500/40 hover:border-rose-400 rounded-xl p-3.5 cursor-pointer transition-all"
+                  className="bg-neutral-950 border border-neutral-800 hover:border-neutral-700 rounded p-3 cursor-pointer transition-colors"
                 >
                   <div className="flex items-start justify-between">
-                    <h4 className="font-bold text-white text-sm">{lead.businessName}</h4>
-                    <span className="text-[10px] font-bold text-rose-400 font-mono bg-rose-500/20 px-1.5 py-0.5 rounded">
+                    <h4 className="font-semibold text-white text-xs">{lead.businessName}</h4>
+                    <span className="text-[10px] font-mono text-rose-400 bg-rose-950/60 px-1.5 py-0.2 rounded border border-rose-900">
                       Due: {lead.nextFollowUpDate}
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-300 line-clamp-1 mt-1">
+                  <p className="text-[11px] text-neutral-400 line-clamp-1 mt-1 font-mono">
                     {lead.websiteCondition}
                   </p>
-                  <div className="mt-3 pt-2 border-t border-slate-800 flex items-center justify-between text-xs">
-                    <span className="text-slate-400 text-[11px]">
-                      Assigned: {assigned ? assigned.name : 'Unassigned'}
+                  <div className="mt-2.5 pt-2 border-t border-neutral-800 flex items-center justify-between text-xs">
+                    <span className="text-neutral-500 text-[11px]">
+                      Assignee: {assigned ? assigned.name : 'Unassigned'}
                     </span>
-                    <button className="text-indigo-400 font-semibold flex items-center gap-1 hover:text-indigo-300">
-                      Open <ArrowRight className="w-3 h-3" />
+                    <button className="text-sky-400 font-medium text-xs flex items-center gap-1 hover:text-sky-300">
+                      Manage <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -81,19 +75,19 @@ export const FollowUpCalendar: React.FC<FollowUpCalendarProps> = ({
         </div>
       )}
 
-      {/* Today & Upcoming */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      {/* Scheduled Tasks List */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded p-4">
         <div className="flex items-center gap-2 mb-4">
-          <CalendarClock className="w-5 h-5 text-indigo-400" />
-          <h3 className="font-bold text-white text-sm">Scheduled Client Pipeline Schedule</h3>
+          <CalendarClock className="w-4 h-4 text-neutral-400" />
+          <h3 className="font-semibold text-white text-xs uppercase tracking-wider">Prospect Outreach Schedule</h3>
         </div>
 
         {leadsWithFollowUps.length === 0 ? (
-          <div className="py-12 text-center text-slate-500 text-xs">
-            No follow-ups currently scheduled. Click any lead card to set a reminder date.
+          <div className="py-10 text-center text-neutral-500 text-xs">
+            No follow-ups currently scheduled. Open any lead record to configure an outreach target date.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {leadsWithFollowUps.map(lead => {
               const assigned = users.find(u => u.id === lead.assignedTo);
               const isOverdue = lead.nextFollowUpDate! < todayStr;
@@ -103,33 +97,30 @@ export const FollowUpCalendar: React.FC<FollowUpCalendarProps> = ({
                 <div
                   key={lead.id}
                   onClick={() => onSelectLead(lead)}
-                  className="bg-slate-950/60 hover:bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-colors"
+                  className="bg-neutral-950 hover:bg-neutral-850 border border-neutral-800 rounded p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2.5 h-2.5 rounded-full ${isOverdue ? 'bg-rose-400' : isToday ? 'bg-amber-400' : 'bg-emerald-400'}`}></div>
-                    <div>
-                      <div className="font-bold text-white text-xs sm:text-sm">{lead.businessName}</div>
-                      <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                        <span>{lead.city}</span>
-                        <span>•</span>
-                        <span className="text-indigo-400">{lead.serviceOpportunity}</span>
-                        <span>•</span>
-                        <span>Assigned to: {assigned ? assigned.name : 'Unassigned'}</span>
-                      </div>
+                  <div>
+                    <div className="font-semibold text-white text-xs">{lead.businessName}</div>
+                    <div className="text-[11px] text-neutral-400 flex items-center gap-2 mt-0.5">
+                      <span>{lead.city}</span>
+                      <span>•</span>
+                      <span className="text-neutral-300">{lead.serviceOpportunity}</span>
+                      <span>•</span>
+                      <span>Assignee: {assigned ? assigned.name : 'Unassigned'}</span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-3 self-end sm:self-center">
                     <div className="text-right">
-                      <div className="text-xs font-mono font-bold text-slate-200">
+                      <div className="text-xs font-mono font-semibold text-white">
                         {lead.nextFollowUpDate}
                       </div>
-                      <div className={`text-[10px] font-bold uppercase tracking-wider ${isOverdue ? 'text-rose-400' : isToday ? 'text-amber-400' : 'text-emerald-400'}`}>
-                        {isOverdue ? 'Overdue' : isToday ? 'Due Today' : 'Upcoming'}
+                      <div className={`text-[10px] font-mono uppercase tracking-wider ${isOverdue ? 'text-rose-400 font-semibold' : isToday ? 'text-amber-400' : 'text-neutral-400'}`}>
+                        {isOverdue ? 'Overdue' : isToday ? 'Due Today' : 'Scheduled'}
                       </div>
                     </div>
-                    <button className="px-2.5 py-1 bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs rounded-lg font-medium">
-                      Manage
+                    <button className="px-2.5 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs rounded border border-neutral-700 font-medium">
+                      Open
                     </button>
                   </div>
                 </div>

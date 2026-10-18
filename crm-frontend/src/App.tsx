@@ -14,17 +14,18 @@ import { LeadDetailModal } from './components/LeadDetailModal';
 import { AddLeadModal } from './components/AddLeadModal';
 import { IngestionHub } from './components/IngestionHub';
 import { FollowUpCalendar } from './components/FollowUpCalendar';
-import { CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
+import { PrivacyPolicy } from './components/PrivacyPolicy';
+import { TermsConditions } from './components/TermsConditions';
+import { Shield, FileText, CheckCircle2 } from 'lucide-react';
 
 export function App() {
-  // Load persistent state from localStorage or initialize with mock data
   const [leads, setLeads] = useState<Lead[]>(() => {
     const saved = localStorage.getItem('caventra_leads');
     return saved ? JSON.parse(saved) : INITIAL_LEADS;
   });
 
   const [users] = useState<User[]>(INITIAL_USERS);
-  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]); // Default Admin
+  const [currentUser, setCurrentUser] = useState<User>(INITIAL_USERS[0]);
   const [activities, setActivities] = useState<Activity[]>(() => {
     const saved = localStorage.getItem('caventra_activities');
     return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
@@ -34,14 +35,13 @@ export function App() {
     return saved ? JSON.parse(saved) : INITIAL_BATCHES;
   });
 
-  const [currentTab, setCurrentTab] = useState<'pipeline' | 'table' | 'calendar' | 'ingestion'>('pipeline');
+  const [currentTab, setCurrentTab] = useState<'pipeline' | 'table' | 'calendar' | 'ingestion' | 'privacy' | 'terms'>('pipeline');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isHarvesting, setIsHarvesting] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Sync to localStorage
   useEffect(() => {
     localStorage.setItem('caventra_leads', JSON.stringify(leads));
   }, [leads]);
@@ -56,10 +56,9 @@ export function App() {
 
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), 3500);
   };
 
-  // Filter leads based on global search
   const filteredLeads = leads.filter(lead => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -72,7 +71,6 @@ export function App() {
     );
   });
 
-  // Update lead status (e.g. from Pipeline advance)
   const handleUpdateLeadStatus = (leadId: string, newStatus: LeadStatus) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
@@ -86,7 +84,7 @@ export function App() {
 
     handleAddActivity(
       leadId,
-      `Status changed to ${newStatus.toUpperCase()}`,
+      `Stage Transition: ${newStatus.toUpperCase()}`,
       `Moved from ${lead.status} to ${newStatus} by ${currentUser.name}`,
       'status_change'
     );
@@ -94,14 +92,12 @@ export function App() {
     showNotification(`Lead moved to ${newStatus.toUpperCase()}`);
   };
 
-  // Update lead details from modal
   const handleUpdateLead = (updated: Lead) => {
     setLeads(prev => prev.map(l => (l.id === updated.id ? updated : l)));
     setSelectedLead(updated);
-    showNotification(`Lead "${updated.businessName}" updated successfully.`);
+    showNotification(`Record updated: ${updated.businessName}`);
   };
 
-  // Add a new activity
   const handleAddActivity = (
     leadId: string,
     title: string,
@@ -120,14 +116,12 @@ export function App() {
     setActivities(prev => [newAct, ...prev]);
   };
 
-  // Add a new lead manually
   const handleAddLead = (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'normalizedDomain'>) => {
-    const cleanDomain = leadData.website.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0].toLowerCase();
+    const cleanDomain = leadData.website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase();
     
-    // Duplicate check
     const existing = leads.find(l => l.normalizedDomain === cleanDomain);
     if (existing) {
-      alert(`A lead for domain "${cleanDomain}" already exists in your pipeline!`);
+      alert(`A record for domain "${cleanDomain}" already exists in the database.`);
       return;
     }
 
@@ -142,42 +136,41 @@ export function App() {
     setLeads(prev => [newLead, ...prev]);
     handleAddActivity(
       newLead.id,
-      'Lead Added Manually',
-      `Created by ${currentUser.name}`,
+      'Record Created Manually',
+      `Registered by ${currentUser.name}`,
       'ingestion'
     );
-    showNotification(`Added ${newLead.businessName} to pipeline!`);
+    showNotification(`Registered ${newLead.businessName}`);
   };
 
-  // Simulate or trigger the autonomous bot harvest
   const handleTriggerHarvest = () => {
     setIsHarvesting(true);
-    showNotification('Contacting Gemini API for web services prospects...');
+    showNotification('Executing scheduled ingestion pipeline...');
 
     setTimeout(() => {
       const generatedLead: Lead = {
         id: `lead_gen_${Date.now()}`,
-        businessName: 'Starlight Medical Spa',
-        website: 'https://starlight-medspa-dallas.com',
-        normalizedDomain: 'starlight-medspa-dallas.com',
+        businessName: 'Starlight Medical Group',
+        website: 'https://starlight-medical-dallas.com',
+        normalizedDomain: 'starlight-medical-dallas.com',
         contactName: 'Dr. Rebecca Stone',
-        businessEmail: 'contact@starlight-medspa-dallas.com',
+        businessEmail: 'contact@starlight-medical-dallas.com',
         businessPhone: '+1 (214) 555-0819',
         city: 'Dallas, TX',
         country: 'United States',
-        industry: 'Wellness & Aesthetic Medicine',
-        leadSource: 'Automated Daily Gemini Bot',
+        industry: 'Healthcare',
+        leadSource: 'Scheduled Ingestion Pipeline',
         sourceUrl: 'https://aistudio.google.com',
-        websiteCondition: 'SSL Certificate expired 14 days ago (insecure checkout), TTFB latency 4.1s.',
+        websiteCondition: 'TLS certificate expired 14 days ago triggering browser security warnings. Server TTFB latency measured at 4.1s.',
         serviceOpportunity: 'Security Audit',
-        verifiedStatus: 'ai_inferred',
+        verificationLevel: 'automated_scan',
         status: 'new',
         priority: 'urgent',
         assignedTo: null,
         estimatedValue: 52000,
         nextFollowUpDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
         lastContactDate: null,
-        notes: 'Identified via automated AI scan. Insecure cart checkout currently scaring mobile patients.',
+        notes: 'Discovered via scheduled scan. Insecure checkout endpoints detected on patient booking portal.',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -186,7 +179,7 @@ export function App() {
       
       const newBatch: IngestionBatch = {
         id: `batch_${Date.now()}`,
-        source: 'Automated Gemini Flash Bot (On-Demand)',
+        source: 'Automated Ingestion Service (On-Demand Execution)',
         timestamp: 'Just now',
         leadsHarvested: 5,
         newLeads: 1,
@@ -198,28 +191,28 @@ export function App() {
 
       handleAddActivity(
         generatedLead.id,
-        'Autonomous Lead Ingested',
-        'Discovered by Gemini Flash API: Expired SSL & 4.1s TTFB latency.',
+        'Lead Ingested on Autopilot',
+        'Criteria logged: Expired TLS certificate & 4.1s TTFB latency.',
         'ingestion'
       );
 
       setIsHarvesting(false);
-      showNotification('🎉 1 Fresh Lead Ingested without downloads or manual entry!');
-    }, 1800);
+      showNotification('1 new organization ingested. Duplicate records skipped.');
+    }, 1500);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col font-['Inter',sans-serif]">
       
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed bottom-5 right-5 z-50 bg-indigo-600 text-white px-4 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-semibold animate-in slide-in-from-bottom duration-200">
-          <Sparkles className="w-4 h-4 text-cyan-300" />
+        <div className="fixed bottom-4 right-4 z-50 bg-neutral-900 border border-neutral-700 text-neutral-200 px-3.5 py-2 rounded shadow-2xl flex items-center gap-2 text-xs font-mono">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
           <span>{notification}</span>
         </div>
       )}
 
-      {/* Top Header & Navigation */}
+      {/* Navigation Header */}
       <Navbar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
@@ -234,14 +227,14 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5">
         
-        {/* Key Metrics Overview (Shown on Pipeline & Table views) */}
+        {/* Metrics Overview (Visible on Pipeline and Directory) */}
         {(currentTab === 'pipeline' || currentTab === 'table') && (
           <MetricsCards leads={leads} />
         )}
 
-        {/* View Switcher */}
+        {/* View Routing */}
         {currentTab === 'pipeline' && (
           <PipelineBoard
             leads={filteredLeads}
@@ -276,6 +269,14 @@ export function App() {
           />
         )}
 
+        {currentTab === 'privacy' && (
+          <PrivacyPolicy onBack={() => setCurrentTab('pipeline')} />
+        )}
+
+        {currentTab === 'terms' && (
+          <TermsConditions onBack={() => setCurrentTab('pipeline')} />
+        )}
+
       </main>
 
       {/* Modals */}
@@ -296,17 +297,31 @@ export function App() {
         users={users}
       />
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-300">CAVENTRA CRM</span>
+      {/* Clean Enterprise Footer */}
+      <footer className="border-t border-neutral-800 bg-neutral-950 py-3 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 text-xs text-neutral-400 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-neutral-300">CAVENTRA Technologies</span>
             <span>•</span>
-            <span>Zero-Cost Serverless Architecture</span>
+            <span className="font-mono text-[11px]">Serverless Infrastructure (₹0 Runtime Budget)</span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-emerald-400/90 font-mono">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Infrastructure Cost: ₹0.00 / month (GitHub Pages + Cloudflare + Google AI)</span>
+
+          <div className="flex items-center gap-4 text-[11px]">
+            <button
+              onClick={() => setCurrentTab('privacy')}
+              className="hover:text-neutral-200 transition-colors flex items-center gap-1"
+            >
+              <Shield className="w-3 h-3 text-neutral-500" />
+              Privacy Policy
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setCurrentTab('terms')}
+              className="hover:text-neutral-200 transition-colors flex items-center gap-1"
+            >
+              <FileText className="w-3 h-3 text-neutral-500" />
+              Terms & Conditions
+            </button>
           </div>
         </div>
       </footer>

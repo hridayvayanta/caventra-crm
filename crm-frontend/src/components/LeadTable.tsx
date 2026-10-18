@@ -2,15 +2,9 @@ import React, { useState } from 'react';
 import { Lead, LeadStatus, User } from '../types/crm';
 import { 
   ExternalLink, 
-  Search, 
   Filter, 
-  ArrowUpDown, 
-  Phone, 
-  Mail, 
-  AlertCircle, 
-  ChevronRight, 
-  CheckCircle2, 
-  Clock 
+  ChevronRight,
+  FileWarning
 } from 'lucide-react';
 
 interface LeadTableProps {
@@ -39,44 +33,42 @@ export const LeadTable: React.FC<LeadTableProps> = ({
 
   const getStatusBadge = (status: LeadStatus) => {
     switch (status) {
-      case 'new': return 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20';
-      case 'contacted': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'qualified': return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
-      case 'proposal': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      case 'won': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      default: return 'bg-slate-800 text-slate-400 border-slate-700';
+      case 'new': return 'bg-neutral-800 text-sky-400 border-neutral-700';
+      case 'contacted': return 'bg-neutral-800 text-blue-300 border-neutral-700';
+      case 'qualified': return 'bg-neutral-800 text-cyan-300 border-neutral-700';
+      case 'proposal': return 'bg-neutral-800 text-amber-300 border-neutral-700';
+      case 'won': return 'bg-neutral-800 text-emerald-400 border-neutral-700';
+      default: return 'bg-neutral-900 text-neutral-500 border-neutral-800';
     }
   };
 
   return (
-    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+    <div className="bg-neutral-900 border border-neutral-800 rounded overflow-hidden">
       
       {/* Table Filters Bar */}
-      <div className="p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="p-3.5 border-b border-neutral-800 flex flex-wrap items-center justify-between gap-3 bg-neutral-950">
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Filters:</span>
+          <Filter className="w-3.5 h-3.5 text-neutral-400" />
+          <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Filter:</span>
           
-          {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500"
+            className="bg-neutral-900 border border-neutral-800 text-xs rounded px-2.5 py-1 text-neutral-300 focus:outline-none focus:border-neutral-700"
           >
-            <option value="all">All Statuses ({leads.length})</option>
-            <option value="new">New</option>
+            <option value="all">All Stages ({leads.length})</option>
+            <option value="new">New Ingested</option>
             <option value="contacted">Contacted</option>
             <option value="qualified">Qualified</option>
-            <option value="proposal">Proposal</option>
-            <option value="won">Won</option>
+            <option value="proposal">Proposal Sent</option>
+            <option value="won">Closed Won</option>
             <option value="lost">Lost</option>
           </select>
 
-          {/* Industry Filter */}
           <select
             value={industryFilter}
             onChange={(e) => setIndustryFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-indigo-500"
+            className="bg-neutral-900 border border-neutral-800 text-xs rounded px-2.5 py-1 text-neutral-300 focus:outline-none focus:border-neutral-700"
           >
             <option value="all">All Industries</option>
             {industries.map(ind => (
@@ -85,8 +77,8 @@ export const LeadTable: React.FC<LeadTableProps> = ({
           </select>
         </div>
 
-        <div className="text-xs text-slate-400 font-mono">
-          Showing <span className="font-bold text-white">{filteredLeads.length}</span> leads
+        <div className="text-xs text-neutral-400 font-mono">
+          Showing <span className="font-semibold text-white">{filteredLeads.length}</span> records
         </div>
       </div>
 
@@ -94,21 +86,21 @@ export const LeadTable: React.FC<LeadTableProps> = ({
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="border-b border-slate-800 bg-slate-950/50 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
-              <th className="py-3 px-4">Business & Domain</th>
-              <th className="py-3 px-4">Contact & Location</th>
-              <th className="py-3 px-4">Website Flaw / Opportunity</th>
-              <th className="py-3 px-4">Status & Stage</th>
-              <th className="py-3 px-4">Assigned Rep</th>
-              <th className="py-3 px-4 text-right">Value (₹)</th>
-              <th className="py-3 px-4 text-center">Action</th>
+            <tr className="border-b border-neutral-800 bg-neutral-900/80 text-neutral-400 font-medium uppercase text-[10px] tracking-wider">
+              <th className="py-2.5 px-3.5">Company & Domain</th>
+              <th className="py-2.5 px-3.5">Contact & Location</th>
+              <th className="py-2.5 px-3.5">Identified Need</th>
+              <th className="py-2.5 px-3.5">Pipeline Stage</th>
+              <th className="py-2.5 px-3.5">Assignee</th>
+              <th className="py-2.5 px-3.5 text-right">Estimated Value</th>
+              <th className="py-2.5 px-3.5 text-center">Action</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60">
+          <tbody className="divide-y divide-neutral-800">
             {filteredLeads.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-slate-500">
-                  No leads match the selected criteria.
+                <td colSpan={7} className="py-8 text-center text-neutral-500">
+                  No records match the active criteria.
                 </td>
               </tr>
             ) : (
@@ -119,21 +111,21 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                   <tr
                     key={lead.id}
                     onClick={() => onSelectLead(lead)}
-                    className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                    className="hover:bg-neutral-850 transition-colors cursor-pointer group"
                   >
                     {/* Business & Domain */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-bold text-white group-hover:text-indigo-300 transition-colors">
+                    <td className="py-3 px-3.5">
+                      <div className="font-semibold text-white group-hover:text-sky-300 transition-colors">
                         {lead.businessName}
                       </div>
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono mt-0.5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-neutral-400 font-mono mt-0.5">
                         <span className="truncate max-w-[180px]">{lead.normalizedDomain}</span>
                         <a
                           href={lead.website}
                           target="_blank"
                           rel="noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="text-slate-500 hover:text-slate-300"
+                          className="text-neutral-500 hover:text-neutral-300"
                         >
                           <ExternalLink className="w-3 h-3" />
                         </a>
@@ -141,59 +133,56 @@ export const LeadTable: React.FC<LeadTableProps> = ({
                     </td>
 
                     {/* Contact & Location */}
-                    <td className="py-3.5 px-4">
-                      <div className="font-medium text-slate-200">
-                        {lead.contactName || <span className="text-slate-500 italic">Not found</span>}
+                    <td className="py-3 px-3.5">
+                      <div className="text-neutral-200">
+                        {lead.contactName || <span className="text-neutral-500 italic">Unpublished</span>}
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      <div className="text-[11px] text-neutral-400">
                         {lead.city}, {lead.country}
                       </div>
                     </td>
 
-                    {/* Website Diagnosis */}
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <div className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-500/10 text-indigo-400 mb-1">
+                    {/* Identified Need */}
+                    <td className="py-3 px-3.5 max-w-xs">
+                      <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-medium bg-neutral-800 text-neutral-300 border border-neutral-700 mb-0.5">
                         {lead.serviceOpportunity}
-                      </div>
-                      <p className="text-[11px] text-slate-300 line-clamp-1">
+                      </span>
+                      <p className="text-[11px] text-neutral-400 line-clamp-1">
                         {lead.websiteCondition}
                       </p>
                     </td>
 
-                    {/* Status Badge */}
-                    <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${getStatusBadge(lead.status)}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                        <span className="capitalize">{lead.status}</span>
+                    {/* Stage Badge */}
+                    <td className="py-3 px-3.5">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider border ${getStatusBadge(lead.status)}`}>
+                        {lead.status}
                       </span>
                     </td>
 
-                    {/* Assigned Rep */}
-                    <td className="py-3.5 px-4">
+                    {/* Assignee initials */}
+                    <td className="py-3 px-3.5">
                       {assigned ? (
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={assigned.avatar}
-                            alt={assigned.name}
-                            className="w-5 h-5 rounded-full object-cover ring-1 ring-slate-700"
-                          />
-                          <span className="text-slate-300 font-medium text-[11px]">{assigned.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-5 h-5 rounded bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[9px] font-bold text-neutral-300 font-mono">
+                            {assigned.initials}
+                          </div>
+                          <span className="text-neutral-300 text-[11px]">{assigned.name}</span>
                         </div>
                       ) : (
-                        <span className="text-slate-500 italic text-[11px]">Unassigned</span>
+                        <span className="text-neutral-500 italic text-[11px]">Unassigned</span>
                       )}
                     </td>
 
-                    {/* Deal Value */}
-                    <td className="py-3.5 px-4 text-right font-bold text-white font-mono">
+                    {/* Value */}
+                    <td className="py-3 px-3.5 text-right font-semibold text-white font-mono">
                       ₹{(lead.estimatedValue || 0).toLocaleString('en-IN')}
                     </td>
 
-                    {/* Action Icon */}
-                    <td className="py-3.5 px-4 text-center">
+                    {/* Action */}
+                    <td className="py-3 px-3.5 text-center">
                       <button 
                         onClick={() => onSelectLead(lead)}
-                        className="p-1 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                        className="p-1 rounded text-neutral-400 hover:text-white transition-colors"
                       >
                         <ChevronRight className="w-4 h-4" />
                       </button>

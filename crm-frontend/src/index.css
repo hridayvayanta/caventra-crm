@@ -4,25 +4,25 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white;
+    @apply bg-neutral-950 text-neutral-100 antialiased selection:bg-neutral-700 selection:text-white;
   }
 }
 
-/* Custom sleek scrollbar */
+/* Minimalist scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: #0a0a0a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 9999px;
+  background: #262626;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #404040;
 }

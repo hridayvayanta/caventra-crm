@@ -1,6 +1,6 @@
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost';
 export type LeadPriority = 'low' | 'medium' | 'high' | 'urgent';
-export type VerifiedStatus = 'verified' | 'ai_inferred' | 'unverified';
+export type VerificationLevel = 'verified' | 'automated_scan' | 'unverified';
 export type UserRole = 'admin' | 'employee';
 
 export interface User {
@@ -8,7 +8,7 @@ export interface User {
   name: string;
   email: string;
   role: UserRole;
-  avatar: string;
+  initials: string;
 }
 
 export interface Activity {
@@ -34,15 +34,15 @@ export interface Lead {
   industry: string;
   leadSource: string;
   sourceUrl?: string;
-  websiteCondition: string; // Key issue identified: e.g. "Slow LCP 5.8s, missing SSL, non-mobile viewport"
+  websiteCondition: string; // Factual technical assessment
   serviceOpportunity: 'Redesign' | 'Maintenance' | 'Hosting' | 'Security Audit' | 'Speed Optimization';
-  verifiedStatus: VerifiedStatus;
+  verificationLevel: VerificationLevel;
   status: LeadStatus;
   priority: LeadPriority;
   assignedTo?: string | null; // User ID
   lastContactDate?: string | null;
   nextFollowUpDate?: string | null;
-  estimatedValue?: number; // In ₹ or $
+  estimatedValue?: number; // In INR (₹)
   notes?: string;
   createdAt: string;
   updatedAt: string;
