@@ -16,11 +16,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
     <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-xl mx-auto shadow-sm my-8">
       
       {/* Official CAVENTRA Monogram Logo */}
-      <div className="w-16 h-16 mx-auto mb-4 flex items-center justify-center p-1 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm">
+      <div className="inline-flex items-center justify-center p-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-md mx-auto mb-4">
         <img
           src="./caventra-logo.png"
           alt="CAVENTRA"
-          className="w-12 h-12 object-contain"
+          className="h-14 sm:h-16 w-auto object-contain"
         />
       </div>
 

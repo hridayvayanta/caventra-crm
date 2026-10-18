@@ -55,12 +55,14 @@ export const ActivationView: React.FC<ActivationViewProps> = ({
       
       {/* Brand Header */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <img
-          src="./caventra-logo.png"
-          alt="CAVENTRA"
-          className="mx-auto h-12 w-auto object-contain"
-        />
-        <h2 className="mt-3 text-xl font-bold tracking-tight text-slate-900">
+        <div className="inline-flex items-center justify-center bg-slate-950 px-6 py-4 rounded-2xl border border-slate-800 shadow-md mx-auto mb-3">
+          <img
+            src="./caventra-logo.png"
+            alt="CAVENTRA"
+            className="h-14 sm:h-16 w-auto object-contain"
+          />
+        </div>
+        <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
           CAVENTRA CRM
         </h2>
         <p className="mt-1 text-xs text-slate-500 font-medium">

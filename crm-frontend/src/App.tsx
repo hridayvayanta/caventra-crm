@@ -517,11 +517,13 @@ export function App() {
       {/* Footer with Logo & Legal Links */}
       <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
         <div className="max-w-7xl mx-auto px-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <img src="./caventra-logo.png" alt="CAVENTRA" className="h-6 w-auto object-contain" />
-            <span className="font-bold text-slate-800">CAVENTRA CRM</span>
+          <div className="flex items-center gap-3">
+            <div className="bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800 flex items-center shadow-sm">
+              <img src="./caventra-logo.png" alt="CAVENTRA" className="h-6 w-auto object-contain" />
+            </div>
+            <span className="font-extrabold text-slate-900 text-sm tracking-tight">CAVENTRA CRM</span>
             <span>•</span>
-            <span className="font-mono text-[11px]">
+            <span className="font-mono text-[11px] text-slate-400">
               {isFirebaseConfigured() ? 'Cloud Firestore & Auth Active' : 'Offline Secure Mode'}
             </span>
           </div>

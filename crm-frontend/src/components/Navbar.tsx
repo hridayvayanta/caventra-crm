@@ -61,26 +61,28 @@ export const Navbar: React.FC<NavbarProps> = ({
       
       {/* Top Primary Navigation Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-4">
+        <div className="flex items-center justify-between h-20 gap-4">
           
           {/* Official CAVENTRA Logo & Brand */}
           <div 
             onClick={() => setCurrentSection('all')}
-            className="flex items-center gap-3 shrink-0 cursor-pointer"
+            className="flex items-center gap-3.5 shrink-0 cursor-pointer group"
           >
-            <img
-              src="./caventra-logo.png"
-              alt="CAVENTRA"
-              className="h-10 w-auto object-contain rounded"
-            />
+            <div className="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 shadow-sm flex items-center justify-center transition-all group-hover:border-slate-700">
+              <img
+                src="./caventra-logo.png"
+                alt="CAVENTRA"
+                className="h-10 sm:h-11 w-auto object-contain"
+              />
+            </div>
             <div className="hidden sm:block">
               <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-slate-900 text-base tracking-tight">CAVENTRA</span>
-                <span className="px-1.5 py-0.2 text-[10px] font-bold uppercase rounded bg-slate-100 text-slate-600 border border-slate-200">
+                <span className="font-extrabold text-slate-900 text-lg tracking-tight">CAVENTRA</span>
+                <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-slate-900 text-amber-300 border border-slate-800 font-mono">
                   CRM
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-mono -mt-0.5">Web Infrastructure & Lead Pipeline</p>
+              <p className="text-xs text-slate-400 font-mono -mt-0.5">Web Infrastructure & Lead Pipeline</p>
             </div>
           </div>
 
