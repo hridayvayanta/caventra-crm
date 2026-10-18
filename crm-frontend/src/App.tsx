@@ -30,6 +30,7 @@ import {
   subscribeAllUsers 
 } from './services/auth';
 import { isFirebaseConfigured } from './services/firebase';
+import { syncLeadsFromGoogleDrive } from './services/driveSync';
 import { Navbar } from './components/Navbar';
 import { StatsRow } from './components/StatsRow';
 import { LeadBoard } from './components/LeadBoard';
@@ -335,6 +336,24 @@ export function App() {
     showNotification('Follow-up task updated successfully.');
   };
 
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+
+  const handleSyncDrive = async () => {
+    setIsSyncingDrive(true);
+    try {
+      const res = await syncLeadsFromGoogleDrive(currentUser, leads);
+      if (res.success) {
+        showNotification(`✓ Synced ${res.importedCount} leads from Google Drive! (${res.duplicateCount} duplicates skipped)`);
+      } else {
+        alert(res.error || 'Failed to sync from Google Drive.');
+      }
+    } catch (err: any) {
+      alert(`Error connecting to Google Drive: ${err.message}`);
+    } finally {
+      setIsSyncingDrive(false);
+    }
+  };
+
   const pendingFollowUpsCount = followUps.filter(t => t.status === 'pending').length;
   const newLeadsCount = leads.filter(l => l.status === 'new').length;
   const pendingRegistrationsCount = allUsers.filter(u => u.status === 'pending_activation').length;
@@ -366,6 +385,8 @@ export function App() {
         setCurrentUser={setCurrentUser}
         onOpenAddModal={() => setIsAddModalOpen(true)}
         onOpenImportModal={() => setIsImportModalOpen(true)}
+        onSyncDrive={handleSyncDrive}
+        isSyncingDrive={isSyncingDrive}
         onLogout={handleLogout}
         followUpsCount={pendingFollowUpsCount}
         newLeadsCount={newLeadsCount}
@@ -413,6 +434,9 @@ export function App() {
               <DriveImportStatusView
                 jobs={ingestionJobs}
                 currentUser={currentUser}
+                existingLeads={leads}
+                onSyncDrive={handleSyncDrive}
+                isSyncingDrive={isSyncingDrive}
               />
             ) : currentSection === 'pending_registrations' ? (
               /* Founder-only: Pending Employee Registrations */
@@ -425,6 +449,8 @@ export function App() {
               <EmptyState
                 onOpenAddModal={() => setIsAddModalOpen(true)}
                 onOpenImportModal={() => setIsImportModalOpen(true)}
+                onSyncDrive={handleSyncDrive}
+                isSyncingDrive={isSyncingDrive}
               />
             ) : filteredLeads.length === 0 ? (
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 text-xs">

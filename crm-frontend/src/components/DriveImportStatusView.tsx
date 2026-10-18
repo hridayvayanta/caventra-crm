@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { IngestionJob, User } from '../types/crm';
+import { IngestionJob, User, Lead } from '../types/crm';
 import { 
   FolderSync, 
   ExternalLink, 
@@ -13,24 +13,84 @@ import {
   HelpCircle,
   ChevronDown,
   ChevronUp,
-  Database
+  Database,
+  Link,
+  Settings
 } from 'lucide-react';
+import { 
+  syncLeadsFromGoogleDrive, 
+  getDriveWebAppUrl, 
+  setDriveWebAppUrl 
+} from '../services/driveSync';
 
 interface DriveImportStatusViewProps {
   jobs: IngestionJob[];
   currentUser: User;
+  existingLeads?: Lead[];
   onRefresh?: () => void;
+  onSyncDrive?: () => Promise<void>;
+  isSyncingDrive?: boolean;
 }
 
 export const DriveImportStatusView: React.FC<DriveImportStatusViewProps> = ({
   jobs,
   currentUser,
+  existingLeads = [],
   onRefresh,
+  onSyncDrive,
+  isSyncingDrive = false,
 }) => {
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [showSetupGuide, setShowSetupGuide] = useState(false);
+  const [showUrlSettings, setShowUrlSettings] = useState(false);
+  const [webAppUrl, setWebAppUrlState] = useState(getDriveWebAppUrl());
+  const [internalSyncing, setInternalSyncing] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  const isAdmin = currentUser.role === 'admin';
+  const isSyncing = isSyncingDrive || internalSyncing;
+  const isAdmin = currentUser.role === 'admin' || currentUser.role === 'founder';
+
+  const handleManualSync = async () => {
+    if (onSyncDrive) {
+      await onSyncDrive();
+      return;
+    }
+
+    setInternalSyncing(true);
+    setSyncFeedback(null);
+    try {
+      const result = await syncLeadsFromGoogleDrive(currentUser, existingLeads, webAppUrl);
+      if (result.success) {
+        setSyncFeedback({
+          type: 'success',
+          message: `✓ Successfully synced ${result.importedCount} new leads from ${result.filesFound} Excel files in Google Drive! (${result.duplicateCount} duplicates skipped)`
+        });
+        if (onRefresh) onRefresh();
+      } else {
+        setSyncFeedback({
+          type: 'error',
+          message: result.error || 'Failed to sync leads from Google Drive Web App.'
+        });
+      }
+    } catch (err: any) {
+      setSyncFeedback({
+        type: 'error',
+        message: err.message || 'Error connecting to Google Apps Script Web App.'
+      });
+    } finally {
+      setInternalSyncing(false);
+    }
+  };
+
+  const handleSaveUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDriveWebAppUrl(webAppUrl);
+    setShowUrlSettings(false);
+    setSyncFeedback({
+      type: 'success',
+      message: '✓ Google Apps Script Web App URL saved successfully.'
+    });
+  };
 
   // Compute live aggregates from database records
   const totalLeadsAdded = jobs.reduce((sum, j) => sum + (j.leadsAdded || 0), 0);
@@ -74,6 +134,27 @@ export const DriveImportStatusView: React.FC<DriveImportStatusViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Primary Action: Sync Leads Now */}
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
+              title="Fetch and sync leads from connected Google Drive folder"
+            >
+              <FolderSync className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Leads Now'}</span>
+            </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => setShowUrlSettings(!showUrlSettings)}
+                className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
+                title="Configure Google Apps Script Web App URL"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
+
             <button
               onClick={() => setShowSetupGuide(!showSetupGuide)}
               className="px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
@@ -81,6 +162,7 @@ export const DriveImportStatusView: React.FC<DriveImportStatusViewProps> = ({
               <HelpCircle className="w-3.5 h-3.5 text-slate-500" />
               <span>{showSetupGuide ? 'Hide Guide' : 'Integration Setup Guide'}</span>
             </button>
+
             {onRefresh && (
               <button
                 onClick={onRefresh}
@@ -93,6 +175,65 @@ export const DriveImportStatusView: React.FC<DriveImportStatusViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* Sync Feedback Toast / Banner */}
+        {syncFeedback && (
+          <div className={`mt-4 p-3 rounded-xl border flex items-center justify-between gap-2.5 text-xs ${
+            syncFeedback.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {syncFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span className="font-semibold">{syncFeedback.message}</span>
+            </div>
+            <button 
+              onClick={() => setSyncFeedback(null)} 
+              className="text-slate-400 hover:text-slate-600 font-bold px-2 py-0.5"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {/* Web App URL Configuration Drawer */}
+        {showUrlSettings && (
+          <form onSubmit={handleSaveUrl} className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Link className="w-3.5 h-3.5 text-blue-600" />
+                Google Apps Script Web App Deployment URL
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowUrlSettings(false)}
+                className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+            <input
+              type="url"
+              value={webAppUrl}
+              onChange={(e) => setWebAppUrlState(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="w-full px-3 py-2 text-xs font-mono bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="submit"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm"
+              >
+                Save Web App URL
+              </button>
+            </div>
+          </form>
+        )}
 
         {/* Admin vs Employee Notification Banner */}
         {!isAdmin && (
