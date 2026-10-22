@@ -27,12 +27,12 @@ export const LeadBoard: React.FC<LeadBoardProps> = ({
   onOpenContactModal,
 }) => {
   return (
-    <div className="flex gap-4 overflow-x-auto pb-6 select-none items-start">
+    <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-6 select-none items-start snap-x snap-mandatory scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
       {COLUMNS.map((col) => {
         const columnLeads = leads.filter(l => l.status === col.id);
 
         return (
-          <div key={col.id} className="w-80 shrink-0 bg-slate-100/70 border border-slate-200/80 rounded-2xl p-3.5 flex flex-col min-h-[500px]">
+          <div key={col.id} className="w-[85vw] sm:w-80 shrink-0 snap-center bg-slate-100/70 border border-slate-200/80 rounded-2xl p-3 sm:p-3.5 flex flex-col min-h-[450px] sm:min-h-[500px]">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">

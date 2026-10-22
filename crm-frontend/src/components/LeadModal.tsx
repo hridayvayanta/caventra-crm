@@ -78,21 +78,21 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className="bg-white rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-200 flex flex-col max-h-[94vh] sm:max-h-[90vh]">
         
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50">
+        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-start justify-between bg-slate-50 shrink-0">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-slate-900">{lead.businessName}</h3>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">{lead.businessName}</h3>
               <a
                 href={lead.website}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
+                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium shrink-0"
               >
-                <span>{lead.normalizedDomain}</span>
+                <span className="truncate max-w-[120px] sm:max-w-none">{lead.normalizedDomain}</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -103,14 +103,14 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto space-y-5">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-5">
           
           {/* Main Action Bar: Mark Contact Completed */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-blue-50 border border-blue-200 rounded-xl">

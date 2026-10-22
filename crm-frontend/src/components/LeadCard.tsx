@@ -79,15 +79,29 @@ export const LeadCard: React.FC<LeadCardProps> = ({
           <span>{lead.city}, {lead.country}</span>
         </div>
         {lead.businessPhone && (
-          <a
-            href={`tel:${lead.businessPhone}`}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition-colors"
-            title={`Call ${lead.businessPhone}`}
-          >
-            <Phone className="w-2.5 h-2.5 text-emerald-600" />
-            <span>{lead.businessPhone}</span>
-          </a>
+          <div className="flex items-center gap-1">
+            <a
+              href={`tel:${lead.businessPhone}`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition-colors"
+              title={`Call ${lead.businessPhone}`}
+            >
+              <Phone className="w-2.5 h-2.5 text-emerald-600" />
+              <span>Call</span>
+            </a>
+            {lead.businessPhone.replace(/[^\d]/g, '').length >= 7 && (
+              <a
+                href={`https://wa.me/${lead.businessPhone.replace(/[^\d]/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-0.5 text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-1.5 py-0.5 rounded transition-colors"
+                title="WhatsApp"
+              >
+                <span>WA</span>
+              </a>
+            )}
+          </div>
         )}
       </div>
 

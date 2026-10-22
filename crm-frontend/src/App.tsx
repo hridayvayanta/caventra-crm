@@ -86,9 +86,11 @@ export function App() {
   const [importHistory, setImportHistory] = useState<ImportRecord[]>([]);
   const [ingestionJobs, setIngestionJobs] = useState<IngestionJob[]>([]);
 
-  // Navigation & View Mode
+  // Navigation & View Mode (Default to mobile-optimized list view on phones)
   const [currentSection, setCurrentSection] = useState<LeadSection>('all');
-  const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [viewMode, setViewMode] = useState<'board' | 'list'>(() => {
+    return typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board';
+  });
   const [activeLegalPage, setActiveLegalPage] = useState<'privacy' | 'terms' | null>(null);
 
   // Outreach Campaign State
@@ -723,7 +725,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3.5 sm:py-6">
         
         {/* Legal Pages */}
         {activeLegalPage === 'privacy' && (
