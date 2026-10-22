@@ -59,3 +59,38 @@ CREATE TABLE IF NOT EXISTS ingestion_batches (
   status TEXT DEFAULT 'completed',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS email_campaigns (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT CHECK(status IN ('PAUSED', 'ACTIVE', 'ERROR')) DEFAULT 'PAUSED',
+  sender_email TEXT NOT NULL,
+  sender_name TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS email_jobs (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES email_campaigns(id),
+  lead_id TEXT NOT NULL REFERENCES leads(id),
+  recipient_email TEXT NOT NULL,
+  status TEXT CHECK(status IN ('QUEUED', 'SENDING', 'SENT', 'FAILED', 'SUPPRESSED', 'CANCELLED', 'UNKNOWN')) DEFAULT 'QUEUED',
+  attempts INTEGER DEFAULT 0,
+  provider_message_id TEXT,
+  provider_thread_id TEXT,
+  opt_out_token TEXT NOT NULL,
+  error_details TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  sent_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS email_suppressions (
+  id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  reason TEXT CHECK(reason IN ('OPT_OUT', 'BOUNCE_PERMANENT', 'INVALID_SYNTAX', 'MANUAL')) NOT NULL,
+  suppressed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  notes TEXT
+);

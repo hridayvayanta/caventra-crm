@@ -213,6 +213,30 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             </div>
           </div>
 
+          {/* Automatic Outreach Status Banner */}
+          <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold text-slate-600 tracking-wider flex items-center gap-1.5">
+                <Mail className="w-3.5 h-3.5 text-blue-600" />
+                <span>Automatic Outreach Campaign</span>
+              </span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase ${
+                lead.outreachStatus === 'sent' ? 'bg-emerald-100 text-emerald-800' :
+                lead.outreachStatus === 'replied' ? 'bg-indigo-100 text-indigo-800' :
+                lead.outreachStatus === 'bounced' ? 'bg-rose-100 text-rose-800' :
+                lead.outreachStatus === 'queued' ? 'bg-blue-100 text-blue-800' :
+                'bg-slate-200 text-slate-700'
+              }`}>
+                {lead.outreachStatus ? lead.outreachStatus.toUpperCase() : 'NOT QUEUED'}
+              </span>
+            </div>
+            {lead.outreachJobId && (
+              <p className="text-[11px] text-slate-500 mt-1 font-mono">
+                Tracking Job: {lead.outreachJobId}
+              </p>
+            )}
+          </div>
+
           {/* Website condition */}
           <div>
             <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">

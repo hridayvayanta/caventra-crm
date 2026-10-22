@@ -1,6 +1,9 @@
 export interface Env {
   DB: D1Database;
   CAVENTRA_INGEST_SECRET: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REDIRECT_URI?: string;
 }
 
 export default {
@@ -111,6 +114,78 @@ export default {
         `).bind(batchId, body.source || "Gemini Harvest", incomingLeads.length, inserted, duplicates).run();
 
         return new Response(JSON.stringify({ status: "success", batchId, inserted, duplicates }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 4. Secure Opt-Out Endpoint (One-click Unsubscribe)
+      if (url.pathname === "/api/outreach/optout" && (request.method === "GET" || request.method === "POST")) {
+        let email = url.searchParams.get("email");
+        let token = url.searchParams.get("token");
+
+        if (request.method === "POST") {
+          try {
+            const b: any = await request.json();
+            if (b.email) email = b.email;
+            if (b.token) token = b.token;
+          } catch {}
+        }
+
+        if (!email || !token) {
+          return new Response(JSON.stringify({ error: "Missing required email or token parameter" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const normEmail = email.trim().toLowerCase();
+        const now = new Date().toISOString();
+
+        // Persist suppression in D1 if available
+        try {
+          await env.DB.prepare(`
+            INSERT OR REPLACE INTO email_suppressions (id, email, reason, suppressed_at, notes)
+            VALUES (?, ?, 'OPT_OUT', ?, 'Unsubscribed via opt-out link')
+          `).bind(normEmail, normEmail, now).run();
+        } catch {
+          // Non-fatal if table not migrated in D1 yet
+        }
+
+        // Return branded HTML if browser navigation, or JSON if API
+        if (request.headers.get("accept")?.includes("text/html")) {
+          const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Unsubscribed — CAVENTRA</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #1e293b; border: 1px solid #334155; padding: 2.5rem; border-radius: 1rem; max-width: 440px; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: #38bdf8; }
+    p { font-size: 0.95rem; color: #94a3b8; line-height: 1.5; }
+    .badge { background: #334155; padding: 0.4rem 0.8rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.85rem; color: #e2e8f0; display: inline-block; margin: 1rem 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>You have unsubscribed</h1>
+    <p>Your email has been permanently suppressed from all future automatic outreach communications from CAVENTRA.</p>
+    <div class="badge">${normEmail}</div>
+    <p style="font-size: 0.8rem; color: #64748b;">If this was a mistake, please reach out to hello@caventraofficial.in</p>
+  </div>
+</body>
+</html>`;
+          return new Response(html, {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
+        }
+
+        return new Response(JSON.stringify({ 
+          status: "success", 
+          email: normEmail, 
+          message: "Email address successfully added to suppression list." 
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

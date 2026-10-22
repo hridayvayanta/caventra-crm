@@ -1,52 +1,110 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // User must be authenticated to access CRM collections
-    function isAuthenticated() {
+
+    // Helper functions for secure authorization
+    function isSignedIn() {
       return request.auth != null;
     }
-    
-    // Check if user has an active CAVENTRA employee or admin account
-    function isCaventraUser() {
-      return isAuthenticated() && 
-        (request.auth.token.email.matches('.*@caventra[.]com$') || 
-         exists(/databases/$(database)/documents/users/$(request.auth.uid)));
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Leads collection: Read & Write for authenticated team members
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function isFounder() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (getUserData(request.auth.uid).role in ['founder', 'admin']);
+    }
+
+    function isActiveUser() {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (
+          getUserData(request.auth.uid).role in ['founder', 'admin'] ||
+          getUserData(request.auth.uid).status == 'active'
+        );
+    }
+
+    // 1. Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isFounder());
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == 'employee' &&
+        request.resource.data.status == 'pending_activation' &&
+        request.resource.data.id == userId;
+      allow update: if isFounder() || (
+        isOwner(userId) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status
+      );
+      allow delete: if isFounder();
+    }
+
+    // 2. Activation codes collection
+    match /activationCodes/{codeId} {
+      allow read, write: if isFounder();
+    }
+
+    // 3. Protected CRM collections
     match /leads/{leadId} {
-      allow read: if isCaventraUser();
-      allow create: if isCaventraUser() && request.resource.data.businessName != null;
-      allow update: if isCaventraUser();
-      allow delete: if isCaventraUser();
+      allow read, write: if isActiveUser();
     }
 
-    // Follow-up tasks: Read & Write for authenticated team members
     match /follow_ups/{taskId} {
-      allow read: if isCaventraUser();
-      allow create, update: if isCaventraUser();
-      allow delete: if isCaventraUser();
+      allow read, write: if isActiveUser();
     }
 
-    // Audit and Contact Activities: Read & Create only (Append-only audit trail)
-    match /activities/{activityId} {
-      allow read: if isCaventraUser();
-      allow create: if isCaventraUser();
-      allow update, delete: if false; // Immutable audit records
+    match /activities/{actId} {
+      allow read, write: if isActiveUser();
     }
 
-    // Import audit history
-    match /import_history/{historyId} {
-      allow read: if isCaventraUser();
-      allow create: if isCaventraUser();
+    match /import_history/{histId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /ingestionJobs/{jobId} {
+      allow read: if isActiveUser();
+      allow write: if isFounder();
+    }
+
+    // 4. Outreach Campaigns: Only authorized founders can configure, activate, or pause campaigns
+    match /campaigns/{campaignId} {
+      allow read: if isActiveUser();
+      allow write: if isFounder();
+    }
+
+    // 5. Email Jobs: Queue protection and anti-tamper.
+    match /emailJobs/{jobId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser() && 
+        request.resource.data.status in ['QUEUED', 'SUPPRESSED'] &&
+        request.resource.data.recipientEmail != null;
+      allow update: if isFounder();
+      allow delete: if isFounder();
+    }
+
+    // 6. Email Events: Append-only audit trail
+    match /emailEvents/{eventId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
       allow update, delete: if false;
     }
 
-    // User profiles
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && request.auth.uid == userId;
+    // 7. Email Suppressions
+    match /email_suppressions/{emailId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update, delete: if isFounder();
+    }
+
+    // 8. Gmail OAuth Tokens & Secrets: Strictly server-side only
+    match /gmail_auth/{authId} {
+      allow read, write: if false;
     }
   }
 }

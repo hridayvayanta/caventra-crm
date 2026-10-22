@@ -56,8 +56,22 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
                 >
                   {/* Company & Domain */}
                   <td className="py-3.5 px-4">
-                    <div className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
-                      {lead.businessName}
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                        {lead.businessName}
+                      </span>
+                      {lead.outreachStatus && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase ${
+                          lead.outreachStatus === 'sent' ? 'bg-emerald-100 text-emerald-800' :
+                          lead.outreachStatus === 'replied' ? 'bg-indigo-100 text-indigo-800' :
+                          lead.outreachStatus === 'bounced' ? 'bg-rose-100 text-rose-800' :
+                          lead.outreachStatus === 'queued' ? 'bg-blue-100 text-blue-800' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          <Mail className="w-2.5 h-2.5" />
+                          <span>{lead.outreachStatus}</span>
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5 font-mono">
                       <span>{lead.normalizedDomain}</span>

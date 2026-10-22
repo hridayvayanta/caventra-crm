@@ -6,7 +6,8 @@ import {
   deleteDoc, 
   onSnapshot, 
   writeBatch, 
-  getDocs,
+  getDoc,
+  getDocs, 
   query, 
   orderBy 
 } from 'firebase/firestore';
@@ -18,8 +19,10 @@ import {
   ImportRecord, 
   User, 
   ContactCompletionFormValues,
-  IngestionJob
+  IngestionJob,
+  OutreachCampaign
 } from '../types/crm';
+import { queueOutreachForLead, DEFAULT_CAMPAIGN } from './outreach';
 
 // Local storage keys for offline/local mode
 const STORAGE_KEYS = {
@@ -245,6 +248,18 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
     await setDoc(leadRef, lead);
     const actRef = doc(db, 'activities', activity.id);
     await setDoc(actRef, activity);
+
+    // Automatic outreach queuing (Executes ONLY if campaign is ACTIVE, valid email, not suppressed)
+    try {
+      const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
+      const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
+      if (campaign.status === 'ACTIVE' && lead.businessEmail) {
+        await queueOutreachForLead(lead, campaign, performedBy);
+      }
+    } catch (e) {
+      console.warn('Outreach queuing skipped:', e);
+    }
+
     return;
   }
 
@@ -254,6 +269,17 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
 
   const activities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
   setStored(STORAGE_KEYS.ACTIVITIES, [activity, ...activities]);
+
+  // Local storage outreach queuing check
+  try {
+    const storedCamp = localStorage.getItem('caventra_outreach_campaign');
+    const campaign = storedCamp ? JSON.parse(storedCamp) : DEFAULT_CAMPAIGN;
+    if (campaign.status === 'ACTIVE' && lead.businessEmail) {
+      await queueOutreachForLead(lead, campaign, performedBy);
+    }
+  } catch (e) {
+    console.warn('Local outreach queuing skipped:', e);
+  }
 };
 
 // 6. Update Lead (Safe partial update)
@@ -347,6 +373,21 @@ export const batchImportLeads = async (
 
       await batch.commit();
 
+      // Enqueue outreach emails for valid imported leads IF campaign is ACTIVE
+      try {
+        const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
+        const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
+        if (campaign.status === 'ACTIVE') {
+          for (const lead of validLeads) {
+            if (lead.businessEmail) {
+              await queueOutreachForLead(lead, campaign, performedBy);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Batch outreach enqueue bypassed:', e);
+      }
+
       return {
         success: true,
         importedCount: validLeads.length,
@@ -374,6 +415,21 @@ export const batchImportLeads = async (
     setStored(STORAGE_KEYS.LEADS, [...validLeads, ...currentLeads]);
     setStored(STORAGE_KEYS.ACTIVITIES, [...newActivities, ...currentActivities]);
     setStored(STORAGE_KEYS.IMPORT_HISTORY, [importRecord, ...currentHistory]);
+
+    // Local storage batch outreach queuing check
+    try {
+      const storedCamp = localStorage.getItem('caventra_outreach_campaign');
+      const campaign = storedCamp ? JSON.parse(storedCamp) : DEFAULT_CAMPAIGN;
+      if (campaign.status === 'ACTIVE') {
+        for (const lead of validLeads) {
+          if (lead.businessEmail) {
+            await queueOutreachForLead(lead, campaign, performedBy);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Local batch outreach enqueue bypassed:', e);
+    }
 
     return {
       success: true,

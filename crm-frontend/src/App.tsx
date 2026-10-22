@@ -8,7 +8,11 @@ import {
   FollowUpTask, 
   ImportRecord, 
   ContactCompletionFormValues,
-  IngestionJob
+  IngestionJob,
+  OutreachCampaign,
+  EmailJob,
+  EmailEvent,
+  EmailSuppression
 } from './types/crm';
 import { INITIAL_USERS } from './data/mockData';
 import { 
@@ -30,6 +34,14 @@ import {
   logoutUser, 
   subscribeAllUsers 
 } from './services/auth';
+import { 
+  DEFAULT_CAMPAIGN, 
+  subscribeCampaign, 
+  subscribeEmailJobs, 
+  subscribeEmailEvents, 
+  subscribeSuppressions, 
+  handleOptOut 
+} from './services/outreach';
 import { isFirebaseConfigured } from './services/firebase';
 import { syncLeadsFromGoogleDrive } from './services/driveSync';
 import { Navbar } from './components/Navbar';
@@ -45,6 +57,7 @@ import { FollowUpTasksView } from './components/FollowUpTasksView';
 import { ImportHistoryView } from './components/ImportHistoryView';
 import { DriveImportStatusView } from './components/DriveImportStatusView';
 import { PendingRegistrationsView } from './components/PendingRegistrationsView';
+import { OutreachCampaignView } from './components/OutreachCampaignView';
 import { LoginView } from './components/auth/LoginView';
 import { RegisterView } from './components/auth/RegisterView';
 import { ActivationView } from './components/auth/ActivationView';
@@ -71,6 +84,13 @@ export function App() {
   const [currentSection, setCurrentSection] = useState<LeadSection>('all');
   const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
   const [activeLegalPage, setActiveLegalPage] = useState<'privacy' | 'terms' | null>(null);
+
+  // Outreach Campaign State
+  const [campaign, setCampaign] = useState<OutreachCampaign>(DEFAULT_CAMPAIGN);
+  const [emailJobs, setEmailJobs] = useState<EmailJob[]>([]);
+  const [emailEvents, setEmailEvents] = useState<EmailEvent[]>([]);
+  const [emailSuppressions, setEmailSuppressions] = useState<EmailSuppression[]>([]);
+  const [optOutMessage, setOptOutMessage] = useState<string | null>(null);
 
   // Search & Modals
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,6 +143,28 @@ export function App() {
     return () => unsubUsers();
   }, [currentUser?.id]);
 
+  // Opt-out URL listener (e.g. #optout?token=...&email=...)
+  useEffect(() => {
+    const handleHashCheck = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#optout')) {
+        const query = hash.replace(/^#optout\??/, '');
+        const params = new URLSearchParams(query);
+        const email = params.get('email');
+        const token = params.get('token');
+        if (email && token) {
+          handleOptOut(email, token).then((res) => {
+            setOptOutMessage(res.message);
+          });
+        }
+      }
+    };
+
+    handleHashCheck();
+    window.addEventListener('hashchange', handleHashCheck);
+    return () => window.removeEventListener('hashchange', handleHashCheck);
+  }, []);
+
   // Subscribe to real-time CRM database collections ONLY when user is authorized
   const isAuthorized = currentUser && (
     currentUser.role === 'founder' || 
@@ -139,12 +181,22 @@ export function App() {
     const unsubHistory = subscribeImportHistory(setImportHistory);
     const unsubJobs = subscribeIngestionJobs(setIngestionJobs);
 
+    // Outreach subscriptions
+    const unsubCampaign = subscribeCampaign(setCampaign);
+    const unsubEmailJobs = subscribeEmailJobs(setEmailJobs);
+    const unsubEvents = subscribeEmailEvents(setEmailEvents);
+    const unsubSuppressions = subscribeSuppressions(setEmailSuppressions);
+
     return () => {
       unsubLeads();
       unsubFollowUps();
       unsubActivities();
       unsubHistory();
       unsubJobs();
+      unsubCampaign();
+      unsubEmailJobs();
+      unsubEvents();
+      unsubSuppressions();
     };
   }, [isAuthorized]);
 
@@ -398,6 +450,29 @@ export function App() {
   const newLeadsCount = leads.filter(l => l.status === 'new').length;
   const pendingRegistrationsCount = allUsers.filter(u => u.status === 'pending_activation').length;
 
+  if (optOutMessage) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-4">
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+            <CheckCircle2 className="w-6 h-6" />
+          </div>
+          <h2 className="text-xl font-bold mb-2 text-white">Unsubscribed Successfully</h2>
+          <p className="text-xs text-slate-400 mb-6 leading-relaxed">{optOutMessage}</p>
+          <button
+            onClick={() => {
+              window.location.hash = '';
+              setOptOutMessage(null);
+            }}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-semibold text-slate-200"
+          >
+            Return to Portal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Plus_Jakarta_Sans',sans-serif]">
       
@@ -453,7 +528,8 @@ export function App() {
             {currentSection !== 'follow_ups' && 
              currentSection !== 'import_history' && 
              currentSection !== 'drive_import_status' && 
-             currentSection !== 'pending_registrations' && (
+             currentSection !== 'pending_registrations' && 
+             currentSection !== 'email_outreach' && (
               <StatsRow leads={leads} />
             )}
 
@@ -463,6 +539,16 @@ export function App() {
                 tasks={followUps}
                 currentUser={currentUser}
                 onCompleteTask={handleCompleteFollowUp}
+              />
+            ) : currentSection === 'email_outreach' ? (
+              /* Automatic Gmail Outreach Management (Founder Console) */
+              <OutreachCampaignView
+                campaign={campaign}
+                jobs={emailJobs}
+                events={emailEvents}
+                suppressions={emailSuppressions}
+                currentUser={currentUser}
+                onShowNotification={showNotification}
               />
             ) : currentSection === 'import_history' ? (
               /* Ingestion Audit History (Section A.14) */

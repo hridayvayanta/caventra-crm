@@ -17,7 +17,8 @@ import {
   FolderSync,
   LogOut,
   UserCheck,
-  Trash2
+  Trash2,
+  Mail
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -343,6 +344,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Drive Import Status</span>
             <span className="px-1 py-0.2 rounded text-[9px] font-bold uppercase bg-blue-100 text-blue-800 font-mono">
               Admin
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentSection('email_outreach')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'email_outreach'
+                ? 'bg-white text-blue-700 shadow-sm border border-slate-200 font-bold'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5 text-blue-600" />
+            <span>Email Outreach</span>
+            <span className="px-1 py-0.2 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-700 font-mono">
+              Automation
             </span>
           </button>
 

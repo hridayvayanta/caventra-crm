@@ -80,5 +80,43 @@ service cloud.firestore {
       allow read: if isActiveUser();
       allow write: if isFounder();
     }
+
+    // 4. Outreach Campaigns: Only authorized founders can configure, activate, or pause campaigns
+    match /campaigns/{campaignId} {
+      allow read: if isActiveUser();
+      allow write: if isFounder();
+    }
+
+    // 5. Email Jobs: Queue protection and anti-tamper.
+    // Browser employees cannot forge 'SENT' status or tamper with provider IDs.
+    match /emailJobs/{jobId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser() && 
+        request.resource.data.status in ['QUEUED', 'SUPPRESSED'] &&
+        request.resource.data.recipientEmail != null;
+      // Status updates to SENT or provider modifications require founder/server authorization
+      allow update: if isFounder();
+      allow delete: if isFounder();
+    }
+
+    // 6. Email Events: Append-only audit trail
+    match /emailEvents/{eventId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update, delete: if false; // Immutable audit records
+    }
+
+    // 7. Email Suppressions: Read by active users; suppressions can be created on opt-out/bounce
+    match /email_suppressions/{emailId} {
+      allow read: if isActiveUser();
+      allow create: if isActiveUser();
+      allow update, delete: if isFounder();
+    }
+
+    // 8. Gmail OAuth Tokens & Secrets: Strictly server-side only.
+    // Browser clients have ZERO read or write access under any circumstances.
+    match /gmail_auth/{authId} {
+      allow read, write: if false;
+    }
   }
 }

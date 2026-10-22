@@ -17,7 +17,8 @@ export type LeadSection =
   | 'lost'
   | 'import_history'
   | 'drive_import_status'
-  | 'pending_registrations';
+  | 'pending_registrations'
+  | 'email_outreach';
 
 export type LeadPriority = 'normal' | 'high' | 'urgent';
 export type UserRole = 'founder' | 'admin' | 'employee';
@@ -124,6 +125,9 @@ export interface Lead {
   sourceFileId?: string;
   sourceFileName?: string;
   sourceUrl?: string;
+  outreachStatus?: OutreachStatus;
+  outreachJobId?: string;
+  outreachSentAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -166,3 +170,132 @@ export interface ContactCompletionFormValues {
   followUpDate: string;
   followUpTime: string;
 }
+
+// ==========================================
+// OUTREACH CAMPAIGN & EMAIL TYPES
+// ==========================================
+
+export type CampaignStatus = 'PAUSED' | 'ACTIVE' | 'ERROR';
+
+export type SenderConnectionStatus = 
+  | 'CONNECTED' 
+  | 'DISCONNECTED' 
+  | 'REVOKED' 
+  | 'EXPIRED' 
+  | 'NOT_CONFIGURED';
+
+export type OutreachStatus = 
+  | 'not_queued' 
+  | 'queued' 
+  | 'sending' 
+  | 'sent' 
+  | 'failed' 
+  | 'suppressed' 
+  | 'replied' 
+  | 'bounced' 
+  | 'unknown';
+
+export type EmailJobStatus = 
+  | 'QUEUED' 
+  | 'SENDING' 
+  | 'SENT' 
+  | 'FAILED' 
+  | 'SUPPRESSED' 
+  | 'CANCELLED' 
+  | 'UNKNOWN';
+
+export type EmailEventType = 
+  | 'QUEUED' 
+  | 'SEND_ATTEMPT' 
+  | 'SENT' 
+  | 'BOUNCED' 
+  | 'REPLIED' 
+  | 'OPTED_OUT' 
+  | 'SUPPRESSED' 
+  | 'FAILED' 
+  | 'RECONCILED';
+
+export type BounceClassification = 
+  | 'PERMANENT' 
+  | 'TEMPORARY' 
+  | 'MAILBOX_FULL' 
+  | 'INVALID_RECIPIENT' 
+  | 'UNCLASSIFIED';
+
+export interface CampaignStats {
+  queuedCount: number;
+  sentCount: number;
+  failedCount: number;
+  suppressedCount: number;
+  repliedCount: number;
+  bouncedCount: number;
+}
+
+export interface OutreachCampaign {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  senderEmail: string;
+  senderName: string;
+  authorizedConnectionStatus: SenderConnectionStatus;
+  subject: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  activatedAt?: string | null;
+  activatedBy?: string | null;
+  pausedAt?: string | null;
+  pausedBy?: string | null;
+  lastSendAt?: string | null;
+  lastError?: string | null;
+  stats: CampaignStats;
+}
+
+export interface EmailJob {
+  id: string;
+  campaignId: string;
+  leadId: string;
+  recipientEmail: string;
+  recipientName?: string | null;
+  businessName: string;
+  status: EmailJobStatus;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  attempts: number;
+  maxAttempts: number;
+  lastAttemptAt?: string | null;
+  nextRetryAt?: string | null;
+  providerMessageId?: string | null;
+  providerThreadId?: string | null;
+  errorDetails?: string | null;
+  createdAt: string;
+  sentAt?: string | null;
+  optOutToken: string;
+  resolvedSubject?: string;
+  templateVersion?: string;
+}
+
+export interface EmailEvent {
+  id: string;
+  jobId: string;
+  leadId: string;
+  campaignId: string;
+  recipientEmail: string;
+  eventType: EmailEventType;
+  bounceType?: BounceClassification;
+  timestamp: string;
+  details?: string;
+  attemptNumber?: number;
+  providerMessageId?: string;
+}
+
+export interface EmailSuppression {
+  id: string; // normalized email
+  email: string;
+  reason: 'OPT_OUT' | 'BOUNCE_PERMANENT' | 'INVALID_SYNTAX' | 'MANUAL';
+  suppressedAt: string;
+  sourceLeadId?: string;
+  sourceJobId?: string;
+  notes?: string;
+}
+
