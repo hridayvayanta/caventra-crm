@@ -55,6 +55,7 @@ https://caventraofficial.in
 ----------------------------------------
 If you prefer not to receive future emails from us, please unsubscribe here:
 {{optOutUrl}}`,
+  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbz1cJ3cDkyM8G6WGcaJKbaHgaV2WVHKf5YQSpck4QwSICUKX6ArhDhvD3pz7ziB8gHR-w/exec',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: new Date().toISOString(),
   stats: {
@@ -474,7 +475,7 @@ export const sendTestEmail = async (
   campaign: OutreachCampaign,
   testRecipientEmail: string,
   performedBy: User
-): Promise<{ success: boolean; message: string }> => {
+): Promise<{ success: boolean; message: string; gmailWebUrl?: string }> => {
   if (performedBy.role !== 'founder' && performedBy.role !== 'admin') {
     throw new Error('Unauthorized: Test emails can only be dispatched by authorized founders.');
   }
@@ -508,12 +509,40 @@ export const sendTestEmail = async (
     details: `Test email dispatched to founder recipient ${normEmail} by ${performedBy.name}`,
   };
 
+  // 1-Click Direct Gmail Composer Web URL
+  const gmailWebUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(normEmail)}&su=${encodeURIComponent(renderedSubject)}&body=${encodeURIComponent(renderedBody)}`;
+
+  // Actual background HTTP dispatch via Google Apps Script (if configured)
+  let liveSent = false;
+  if (campaign.appsScriptUrl) {
+    try {
+      await fetch(campaign.appsScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: normEmail,
+          subject: renderedSubject,
+          body: renderedBody,
+          fromName: campaign.senderName || 'CAVENTRA Team',
+        }),
+        mode: 'no-cors', // Avoids cross-origin CORS block from Google script redirect
+      });
+      liveSent = true;
+    } catch (err) {
+      console.warn('Apps Script delivery attempted:', err);
+    }
+  }
+
   if (isFirebaseConfigured() && db) {
     const eventRef = doc(db, 'emailEvents', event.id);
     await setDoc(eventRef, event);
     return { 
       success: true, 
-      message: `Verified test email successfully prepared and recorded for ${normEmail}.` 
+      message: liveSent 
+        ? `Live test email dispatched via Google Apps Script to ${normEmail}.`
+        : `Test email prepared for ${normEmail}. You can also send directly via Gmail below.`,
+      gmailWebUrl,
     };
   }
 
@@ -521,7 +550,10 @@ export const sendTestEmail = async (
   setStored(STORAGE_KEYS.EVENTS, [event, ...events]);
   return { 
     success: true, 
-    message: `Verified test email successfully prepared and recorded for ${normEmail}.` 
+    message: liveSent 
+      ? `Live test email dispatched via Google Apps Script to ${normEmail}.`
+      : `Test email prepared for ${normEmail}. You can also send directly via Gmail below.`,
+    gmailWebUrl,
   };
 };
 

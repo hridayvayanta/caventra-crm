@@ -67,7 +67,11 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
   // Test Email State
   const [testRecipient, setTestRecipient] = useState(currentUser.email || '');
   const [isSendingTest, setIsSendingTest] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; msg: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; msg: string; gmailWebUrl?: string } | null>(null);
+
+  // Apps Script Webhook URL
+  const [appsScriptUrl, setAppsScriptUrl] = useState(campaign.appsScriptUrl || '');
+  const [isSavingUrl, setIsSavingUrl] = useState(false);
 
   // Filter for Queue Table
   const [jobFilter, setJobFilter] = useState<'all' | 'QUEUED' | 'SENT' | 'FAILED' | 'SUPPRESSED'>('all');
@@ -133,8 +137,8 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
       setIsSendingTest(true);
       setTestResult(null);
       const res = await sendTestEmail(campaign, testRecipient, currentUser);
-      setTestResult({ success: true, msg: res.message });
-      onShowNotification('Test email prepared and recorded successfully.');
+      setTestResult({ success: true, msg: res.message, gmailWebUrl: res.gmailWebUrl });
+      onShowNotification(res.message);
     } catch (err: any) {
       setTestResult({ success: false, msg: err.message });
     } finally {
@@ -495,12 +499,30 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
               </div>
 
               {testResult && (
-                <div className={`p-3 rounded-lg text-xs font-medium ${
+                <div className={`p-3.5 rounded-lg text-xs font-medium space-y-2.5 ${
                   testResult.success 
                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
                     : 'bg-rose-50 text-rose-800 border border-rose-200'
                 }`}>
-                  {testResult.msg}
+                  <div className="flex items-center gap-1.5">
+                    {testResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                    <span>{testResult.msg}</span>
+                  </div>
+
+                  {testResult.gmailWebUrl && (
+                    <div className="pt-2 border-t border-emerald-200/60 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-emerald-700 font-medium">Send immediately from your logged-in Gmail account:</span>
+                      <a
+                        href={testResult.gmailWebUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Open in Gmail Composer</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

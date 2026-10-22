@@ -248,6 +248,7 @@ export interface OutreachCampaign {
   pausedBy?: string | null;
   lastSendAt?: string | null;
   lastError?: string | null;
+  appsScriptUrl?: string;
   stats: CampaignStats;
 }
 

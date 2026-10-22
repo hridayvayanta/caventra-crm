@@ -26,6 +26,8 @@ function doPost(e) {
       return jsonResponse(handleVerifyCode(body));
     } else if (action === 'revoke_code') {
       return jsonResponse(handleRevokeCode(body));
+    } else if (action === 'send_email' || action === 'send_outreach') {
+      return jsonResponse(handleSendOutreachEmail(body));
     } else {
       return jsonResponse({ success: false, error: 'Unknown action specified' }, 400);
     }
@@ -249,5 +251,28 @@ function generateSecureRandomCode(length) {
 function jsonResponse(data, status) {
   var output = ContentService.createTextOutput(JSON.stringify(data));
   output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
+
+/**
+ * Handle real outreach email transmission via native GmailApp
+ */
+function handleSendOutreachEmail(data) {
+  var to = data.to;
+  var subject = data.subject;
+  var body = data.body;
+  var fromName = data.fromName || 'CAVENTRA Team';
+
+  if (!to || !subject || !body) {
+    throw new Error('Missing required fields: to, subject, or body');
+  }
+
+  // Native Google Apps Script GmailApp: sends real email from founder's Google account!
+  GmailApp.sendEmail(to, subject, body, {
+    name: fromName
+  });
+
+  return { success: true, to: to, sentAt: new Date().toISOString() };
+}
   return output;
 }
