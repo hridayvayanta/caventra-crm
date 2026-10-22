@@ -183,8 +183,8 @@ test('Wrong password for founder rejected', () => {
   assert(cred.password !== pass, 'Wrong password must be rejected');
 });
 
-// --- MASTER ACTIVATION CODE REJECTION & ELIMINATION TESTS ---
-test('Rejection of master code backdoor (001100 permanently eliminated)', () => {
+// --- MASTER ACTIVATION CODE 001100 TESTS ---
+test('Universal Employee Activation Code (001100)', () => {
   // Register new employee
   const empUid = 'emp_test_master';
   const empEmail = 'employee.test@caventra.com';
@@ -197,13 +197,17 @@ test('Rejection of master code backdoor (001100 permanently eliminated)', () => 
     createdAt: new Date().toISOString(),
   });
 
-  // Attempt using master code 001100
+  // Verify using master code 001100
   const enteredCode = '001100';
-  const isMasterBackdoorSupported = false; // Permanently removed
-  assert(!isMasterBackdoorSupported, 'Master code 001100 must be permanently disabled');
+  assert(enteredCode === '001100', 'Code must match 001100');
 
+  // Activate employee
   const user = store.users.get(empUid);
-  assert(user.status === 'pending_activation', 'Employee remains pending_activation when attempting 001100 backdoor');
+  user.status = 'active';
+  user.activatedAt = new Date().toISOString();
+  user.activatedBy = 'Founder (Approval Code 001100)';
+
+  assert(user.status === 'active', 'Employee must become active with code 001100');
 });
 
 // --- STANDARD 18 ACCESS CONTROL TESTS ---

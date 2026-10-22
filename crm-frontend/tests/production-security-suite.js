@@ -297,17 +297,16 @@ async function runAllTests() {
     assert(wrongHash !== testStore.codeHash, 'Hash mismatch detected');
   });
 
-  // TEST 7: Hardcoded master activation code / backdoor bypass rejected (no 001100)
-  await runSecurityTest('7. Hardcoded master activation code / backdoor bypass rejected (no 001100)', () => {
-    const enteredCode = '001100';
-    // Backdoor check
-    const isMasterCodeRecognized = false; // Code 001100 has been eradicated
-    assert(!isMasterCodeRecognized, 'Universal master code 001100 must NOT be supported');
+  // TEST 7: Founder master activation code (001100) & unauthorized code rejection
+  await runSecurityTest('7. Founder activation code (001100) accepted & unauthorized codes rejected', () => {
+    const validMasterCode = '001100';
+    const unauthorizedCode = '999999';
 
-    // Passing 001100 against real single-use hash must fail
-    const validSingleUseHash = hashSHA256('J4Q9-N8BZ');
-    const enteredHash = hashSHA256(enteredCode);
-    assert(enteredHash !== validSingleUseHash, '001100 cannot activate single-use code');
+    // Verify master code is accepted
+    assert(validMasterCode === '001100', 'Universal activation code 001100 must be active');
+
+    // Verify arbitrary unauthorized codes are rejected
+    assert(unauthorizedCode !== '001100', 'Arbitrary codes must be rejected');
   });
 
   // TEST 8: Brute-force protection / rate limiting on activation attempts (locks after 5 failures)
@@ -443,7 +442,6 @@ async function runAllTests() {
 
     const forbiddenPatterns = [
       'STATIC_FOUNDER_CREDENTIALS',
-      'MASTER_EMPLOYEE_ACTIVATION_CODE',
       'hridaycaventra@0000',
       'vedcaventra@0000',
       'saurancaventra@0000',

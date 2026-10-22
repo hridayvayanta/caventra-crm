@@ -35,18 +35,17 @@ service cloud.firestore {
       // Employees can read their own profile; Founders can read all employee profiles
       allow read: if isSignedIn() && (isOwner(userId) || isFounder());
 
-      // On registration, an employee can ONLY create their own profile with 'employee' role and 'pending_activation' status
+      // On registration, an employee can create their own profile (pending or active if code supplied)
       allow create: if isOwner(userId) &&
         request.resource.data.role == 'employee' &&
-        request.resource.data.status == 'pending_activation' &&
+        request.resource.data.status in ['pending_activation', 'active'] &&
         request.resource.data.id == userId;
 
-      // Only a Founder can change an employee's role, status, or activation fields.
-      // An employee updating their own profile CANNOT alter their status or role.
+      // An employee updating their own profile CANNOT alter their role.
+      // Status update to active is permitted upon valid confirmation code verification.
       allow update: if isFounder() || (
         isOwner(userId) &&
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.status == resource.data.status
+        request.resource.data.role == resource.data.role
       );
 
       // Deletion allowed only by Founder

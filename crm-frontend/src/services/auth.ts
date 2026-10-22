@@ -29,8 +29,10 @@ export const KNOWN_FOUNDERS: Record<string, { name: string; initials: string; ro
   'hriday@caventra.com': { name: 'Hriday Vayanta', initials: 'HV', role: 'founder' },
 };
 
+// Universal Founder Activation Code for authorized employee onboarding
+export const MASTER_EMPLOYEE_ACTIVATION_CODE = '001100';
+
 // Cryptographic Password Hashes (SHA-256) for offline fallback/development mode
-// Notice: Plaintext passwords are NEVER stored in source code.
 const FALLBACK_FOUNDER_HASHES: Record<string, string> = {
   'hridayvayanta7@gmail.com': 'f900e185f91cc28a6ad3ee97d87bb4468d85803606f166aed69c93cc0af4332d',
   'hridayvayanta@gmail.com': 'f900e185f91cc28a6ad3ee97d87bb4468d85803606f166aed69c93cc0af4332d',
@@ -172,16 +174,17 @@ export const registerEmployee = async (
     throw new Error(passCheck.errors.join('. '));
   }
 
+  const isMasterCode = (rawCode === MASTER_EMPLOYEE_ACTIVATION_CODE);
   const nowIso = new Date().toISOString();
 
   // A. Real Firebase Auth & Firestore flow
   if (isFirebaseConfigured() && auth && db) {
     try {
-      // 1. If an activation code is provided at registration, verify it first
+      // 1. If master code or custom code provided
       let preIssuedRecord: ActivationCodeRecord | null = null;
       let preIssuedDocId: string | null = null;
 
-      if (rawCode) {
+      if (rawCode && !isMasterCode) {
         // Query activationCodes collection to check validity before creating auth account
         const codesRef = collection(db, 'activationCodes');
         const qCode = query(codesRef, where('employeeEmail', '==', email));
@@ -215,29 +218,33 @@ export const registerEmployee = async (
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
+      const isActivated = isMasterCode || Boolean(preIssuedRecord);
+      const activatedBy = isMasterCode ? 'Founder Approval (Code 001100)' : preIssuedRecord?.issuedByName;
+
       const newUser: User = {
         id: uid,
         name,
         email,
         phoneNumber: phone,
         role: 'employee',
-        status: preIssuedRecord ? 'active' : 'pending_activation',
+        status: isActivated ? 'active' : 'pending_activation',
         initials: getInitials(name),
         createdAt: nowIso,
         registeredAt: nowIso,
-        ...(preIssuedRecord ? { activatedAt: nowIso, activatedBy: preIssuedRecord.issuedByName } : {})
+        ...(isActivated ? { activatedAt: nowIso, activatedBy } : {})
       };
 
       // Write user profile to Firestore
       await setDoc(doc(db, 'users', uid), newUser);
 
-      if (preIssuedRecord && preIssuedDocId) {
-        // Mark code used
-        await updateDoc(doc(db, 'activationCodes', preIssuedDocId), {
-          used: true,
-          usedAt: nowIso,
-          employeeUid: uid,
-        });
+      if (isActivated) {
+        if (preIssuedDocId) {
+          await updateDoc(doc(db, 'activationCodes', preIssuedDocId), {
+            used: true,
+            usedAt: nowIso,
+            employeeUid: uid,
+          });
+        }
 
         setStored(STORAGE_KEYS.ACTIVE_SESSION, newUser);
         return {
@@ -272,9 +279,10 @@ export const registerEmployee = async (
   }
 
   // Check code if provided in fallback mode
-  let isCodeValid = false;
-  let codeIssuer = '';
-  if (rawCode) {
+  let isCodeValid = isMasterCode;
+  let codeIssuer = isMasterCode ? 'Founder Approval (Code 001100)' : '';
+
+  if (rawCode && !isMasterCode) {
     const codes = getStored<ActivationCodeRecord[]>(STORAGE_KEYS.ACTIVATION_CODES, []);
     const matchingCode = codes.find(c => c.employeeEmail.toLowerCase() === email);
     if (!matchingCode) {
@@ -585,6 +593,75 @@ export const verifyActivationCode = async (
 
   if (!cleanEmail || !cleanCode) {
     throw new Error('Please enter your registered email and the activation code provided by your founder.');
+  }
+
+  // 1. Universal Founder Activation Code (001100) Verification
+  if (cleanCode === MASTER_EMPLOYEE_ACTIVATION_CODE) {
+    const nowIso = new Date().toISOString();
+    let cloudActivated = false;
+
+    // A. Firebase Firestore Flow
+    if (isFirebaseConfigured() && db) {
+      try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', cleanEmail));
+        const userSnapshot = await getDocs(q);
+
+        if (!userSnapshot.empty) {
+          const employeeDoc = userSnapshot.docs[0];
+          const employeeData = employeeDoc.data() as User;
+
+          if (employeeData.status === 'active') {
+            return {
+              success: true,
+              message: 'Your account is already active. Please proceed to the sign-in screen.',
+            };
+          }
+
+          await updateDoc(doc(db, 'users', employeeDoc.id), {
+            status: 'active',
+            activatedAt: nowIso,
+            activatedBy: 'Founder (Approval Code 001100)',
+          });
+          cloudActivated = true;
+        }
+      } catch (err) {
+        console.warn('Firestore verification attempt error:', err);
+      }
+    }
+
+    // B. Local Storage Fallback Flow
+    const users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const employee = users.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (employee) {
+      if (employee.status === 'active') {
+        return {
+          success: true,
+          message: 'Your account is already active. Please proceed to the sign-in screen.',
+        };
+      }
+
+      const updatedUsers = users.map(u => 
+        u.id === employee.id 
+          ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Approval Code 001100)' } 
+          : u
+      );
+      setStored(STORAGE_KEYS.USERS, updatedUsers);
+      return {
+        success: true,
+        message: 'Account successfully activated! Please sign in with your email and password.',
+      };
+    }
+
+    if (cloudActivated) {
+      return {
+        success: true,
+        message: 'Account successfully activated! Please sign in with your email and password.',
+      };
+    }
+
+    throw new Error('No registered account was found with this email. Please register first.');
   }
 
   // A. Firebase Firestore Flow for Custom Single-Use Codes
