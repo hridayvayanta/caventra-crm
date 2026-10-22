@@ -247,11 +247,11 @@ export const RegisterView: React.FC<RegisterViewProps> = ({
                 type="text"
                 value={founderCode}
                 onChange={(e) => setFounderCode(e.target.value.toUpperCase())}
-                placeholder="Enter founder code (e.g. 001100)"
+                placeholder="ENTER 6-DIGIT CODE"
                 className="block w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono tracking-widest uppercase font-semibold text-center"
               />
               <p className="text-[11px] text-blue-800/80">
-                Have the code from your founder? Enter it here to skip activation and access the CRM immediately!
+                Only if pre-issued by a founder. Otherwise, leave blank and your account will be reviewed by admin.
               </p>
             </div>
 
