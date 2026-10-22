@@ -117,12 +117,36 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
                     </div>
                   </td>
 
-                  {/* Location */}
+                  {/* Location & Direct Contact Info */}
                   <td className="py-3.5 px-4 text-slate-600">
-                    <div>{lead.city}, {lead.country}</div>
-                    {lead.contactName && (
-                      <div className="text-[11px] text-slate-400">{lead.contactName}</div>
-                    )}
+                    <div className="font-medium text-slate-800">{lead.city}, {lead.country}</div>
+                    <div className="flex flex-col gap-0.5 mt-0.5">
+                      {lead.contactName && (
+                        <div className="text-[11px] text-slate-400">{lead.contactName}</div>
+                      )}
+                      {lead.businessPhone && (
+                        <a
+                          href={`tel:${lead.businessPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[11px] font-mono font-semibold text-emerald-700 hover:text-emerald-900 flex items-center gap-1"
+                          title={`Call ${lead.businessPhone}`}
+                        >
+                          <Phone className="w-2.5 h-2.5" />
+                          <span>{lead.businessPhone}</span>
+                        </a>
+                      )}
+                      {lead.businessEmail && (
+                        <a
+                          href={`mailto:${lead.businessEmail}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] font-mono text-slate-500 hover:text-slate-800 flex items-center gap-1 truncate max-w-[160px]"
+                          title={`Email ${lead.businessEmail}`}
+                        >
+                          <Mail className="w-2.5 h-2.5" />
+                          <span>{lead.businessEmail}</span>
+                        </a>
+                      )}
+                    </div>
                   </td>
 
                   {/* Need */}
