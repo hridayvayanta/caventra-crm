@@ -293,6 +293,47 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Apps Script Webhook Configuration */}
+        {isFounder && (
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
+            <div className="flex-1 max-w-2xl">
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Apps Script Webhook URL (₹0 Direct Gmail Dispatcher)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="url"
+                  value={appsScriptUrl}
+                  onChange={(e) => setAppsScriptUrl(e.target.value)}
+                  placeholder="https://script.google.com/macros/s/AKfy.../exec"
+                  className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+                <button
+                  type="button"
+                  disabled={isSavingUrl}
+                  onClick={async () => {
+                    setIsSavingUrl(true);
+                    try {
+                      await updateCampaign({ appsScriptUrl }, currentUser);
+                      onShowNotification('Apps Script Webhook URL updated successfully.');
+                    } catch (e: any) {
+                      alert(e.message);
+                    } finally {
+                      setIsSavingUrl(false);
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-sm shrink-0"
+                >
+                  {isSavingUrl ? 'Saving...' : 'Save Webhook URL'}
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 max-w-sm leading-relaxed">
+              In Google Apps Script (Tab 4): Click <strong>Deploy &gt; New deployment &gt; Web app &gt; Execute as: Me &gt; Who has access: Anyone</strong>. Then paste the URL here.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Metrics Row */}
@@ -745,10 +786,22 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
                             </a>
                           </div>
                         ) : job.status === 'SENT' ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Delivered</span>
-                          </span>
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Dispatched</span>
+                            </span>
+                            <a
+                              href={getJobGmailUrl(job)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open in Gmail Composer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-semibold transition-all shadow-xs"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Open in Gmail</span>
+                            </a>
+                          </div>
                         ) : (
                           <span className="text-[11px] text-slate-400">—</span>
                         )}
