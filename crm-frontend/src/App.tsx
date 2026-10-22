@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Lead, 
   LeadStatus, 
@@ -210,12 +210,24 @@ export function App() {
     };
   }, [isAuthorized]);
 
-  // Auto-sync from Google Drive for any new user or device if leads are empty
+  // Auto-sync Google Drive on Login / App Open (Silent Background Sync)
+  const hasAutoSyncedRef = useRef(false);
+
   useEffect(() => {
-    if (isAuthorized && currentUser && leads.length === 0 && !isSyncingDrive) {
-      syncLeadsFromGoogleDrive(currentUser, []).catch(e => console.warn('Auto drive sync notice:', e));
-    }
-  }, [isAuthorized, leads.length]);
+    if (!isAuthorized || !currentUser || hasAutoSyncedRef.current) return;
+    hasAutoSyncedRef.current = true;
+
+    // Run silent background sync to import any new Drive leads automatically
+    syncLeadsFromGoogleDrive(currentUser, leads)
+      .then((res) => {
+        if (res.success && res.importedCount > 0) {
+          showNotification(`✓ Automatically synced ${res.importedCount} new lead(s) from Google Drive!`);
+        }
+      })
+      .catch((err) => {
+        console.warn('Auto Drive sync notice:', err);
+      });
+  }, [isAuthorized, currentUser]);
 
   const showNotification = (msg: string) => {
     setNotification(msg);

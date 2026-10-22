@@ -67,12 +67,24 @@ export const syncLeadsFromGoogleDrive = async (
     const filesFound = data.filesFound || 0;
     const now = new Date().toISOString();
 
-    // Deduplication sets
+    // Fall back to local storage if existingLeads is not yet populated
+    const baseLeads: Lead[] = (existingLeads && existingLeads.length > 0)
+      ? existingLeads
+      : (() => {
+          try {
+            const raw = localStorage.getItem('caventra_leads');
+            return raw ? JSON.parse(raw) : [];
+          } catch {
+            return [];
+          }
+        })();
+
+    // Deduplication sets (by domain and by email)
     const existingDomains = new Set(
-      existingLeads.map(l => l.normalizedDomain).filter(Boolean)
+      baseLeads.map(l => l.normalizedDomain).filter(Boolean)
     );
     const existingEmails = new Set(
-      existingLeads.map(l => (l.businessEmail || '').toLowerCase()).filter(Boolean)
+      baseLeads.map(l => (l.businessEmail || l.email || '').toLowerCase()).filter(Boolean)
     );
 
     const validLeads: Lead[] = [];
