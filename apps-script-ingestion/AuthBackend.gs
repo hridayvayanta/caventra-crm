@@ -38,14 +38,32 @@ function doPost(e) {
 }
 
 /**
- * Handle GET requests for health check
+ * Handle GET requests for health check or fallback dispatch
  */
 function doGet(e) {
+  try {
+    if (e && e.parameter && (e.parameter.action === 'send_email' || e.parameter.action === 'send_outreach')) {
+      return jsonResponse(handleSendOutreachEmail(e.parameter));
+    }
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.message }, 500);
+  }
+
   return jsonResponse({
     status: 'online',
-    service: 'CAVENTRA CRM Auth & Ingestion Backend',
+    service: 'CAVENTRA CRM Email & Ingestion Backend',
     timestamp: new Date().toISOString()
   });
+}
+
+/**
+ * 1-Click Verification Test Function
+ * Run this function ONCE inside Google Apps Script editor to authorize Gmail access!
+ */
+function testSendEmail() {
+  var myEmail = Session.getActiveUser().getEmail() || 'hridayvayanta7@gmail.com';
+  GmailApp.sendEmail(myEmail, 'CAVENTRA Gmail Authorization Test', 'Your Gmail integration is successfully authorized and working!');
+  Logger.log('Test email successfully sent to ' + myEmail);
 }
 
 /**
