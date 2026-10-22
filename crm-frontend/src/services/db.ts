@@ -33,6 +33,115 @@ const STORAGE_KEYS = {
   INGESTION_JOBS: 'caventra_ingestion_jobs',
 };
 
+// Normalization and Deduplication Validation Helpers
+export const normalizeDomain = (url?: string | null): string => {
+  if (!url) return '';
+  const d = url
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split('/')[0]
+    .split('?')[0];
+  if (!d || d === 'unknown.com' || d.endsWith('.local') || d.includes('priority') || d.includes(' ')) return '';
+  return d;
+};
+
+export const normalizeEmail = (email?: string | null): string => {
+  if (!email) return '';
+  const e = email.trim().toLowerCase();
+  if (e.includes('@') && e.includes('.')) return e;
+  return '';
+};
+
+export const normalizePhone = (phone?: string | null): string => {
+  if (!phone) return '';
+  const digits = phone.replace(/[^\d]/g, '');
+  if (digits.length >= 7) {
+    return digits.length > 10 ? digits.slice(-10) : digits;
+  }
+  return '';
+};
+
+export const normalizeBusinessName = (name?: string | null): string => {
+  if (!name) return '';
+  return name.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+export const checkIsDuplicateLead = (
+  candidate: Partial<Lead>,
+  existingLeads: Lead[]
+): { isDuplicate: boolean; reason?: string } => {
+  const cEmail = normalizeEmail(candidate.businessEmail || (candidate as any).email);
+  const cDomain = normalizeDomain(candidate.normalizedDomain || candidate.website || '');
+  const cPhone = normalizePhone(candidate.businessPhone || (candidate as any).phone);
+  const cName = normalizeBusinessName(candidate.businessName || (candidate as any).companyName || (candidate as any).name);
+
+  for (const existing of existingLeads) {
+    if (candidate.id && existing.id === candidate.id) continue;
+
+    const eEmail = normalizeEmail(existing.businessEmail || (existing as any).email);
+    if (cEmail && eEmail && cEmail === eEmail) {
+      return { isDuplicate: true, reason: `Lead with email "${cEmail}" already exists (${existing.businessName})` };
+    }
+
+    const eDomain = normalizeDomain(existing.normalizedDomain || existing.website || '');
+    if (cDomain && eDomain && cDomain === eDomain) {
+      return { isDuplicate: true, reason: `Lead with domain "${cDomain}" already exists (${existing.businessName})` };
+    }
+
+    const ePhone = normalizePhone(existing.businessPhone || (existing as any).phone);
+    if (cPhone && ePhone && cPhone === ePhone) {
+      return { isDuplicate: true, reason: `Lead with phone number "${existing.businessPhone || cPhone}" already exists (${existing.businessName})` };
+    }
+
+    const eName = normalizeBusinessName(existing.businessName || (existing as any).companyName || (existing as any).name);
+    if (cName && eName && cName.length >= 4 && cName === eName) {
+      const sameSource = Boolean(candidate.sourceFileName && candidate.sourceFileName === existing.sourceFileName);
+      const sameCity = Boolean(candidate.city && candidate.city.toLowerCase() === (existing.city || '').toLowerCase());
+      if (sameSource || sameCity || (!cDomain && !eDomain)) {
+        return { isDuplicate: true, reason: `Lead with company name "${existing.businessName}" already exists` };
+      }
+    }
+  }
+
+  return { isDuplicate: false };
+};
+
+export const deduplicateLeadsList = (leads: Lead[]): Lead[] => {
+  const seenIds = new Set<string>();
+  const seenEmails = new Set<string>();
+  const seenDomains = new Set<string>();
+  const seenPhones = new Set<string>();
+  const seenNames = new Set<string>();
+  const unique: Lead[] = [];
+
+  for (const l of leads) {
+    if (seenIds.has(l.id)) continue;
+
+    const email = normalizeEmail(l.businessEmail);
+    if (email && seenEmails.has(email)) continue;
+
+    const domain = normalizeDomain(l.normalizedDomain || l.website);
+    if (domain && seenDomains.has(domain)) continue;
+
+    const phone = normalizePhone(l.businessPhone);
+    if (phone && seenPhones.has(phone)) continue;
+
+    const name = normalizeBusinessName(l.businessName);
+    if (name && name.length >= 4 && seenNames.has(name) && (l.sourceFileName || email || domain)) continue;
+
+    seenIds.add(l.id);
+    if (email) seenEmails.add(email);
+    if (domain) seenDomains.add(domain);
+    if (phone) seenPhones.add(phone);
+    if (name) seenNames.add(name);
+
+    unique.push(l);
+  }
+  return unique;
+};
+
 // In-memory / localStorage helpers
 const getStored = <T>(key: string, defaultValue: T): T => {
   try {
@@ -52,10 +161,26 @@ const setStored = <T>(key: string, value: T): void => {
   }
 };
 
+export const getAllCurrentLeads = async (): Promise<Lead[]> => {
+  if (isFirebaseConfigured() && db) {
+    try {
+      const snap = await getDocs(collection(db, 'leads'));
+      const list: Lead[] = [];
+      snap.forEach(d => list.push(d.data() as Lead));
+      if (list.length > 0) return deduplicateLeadsList(list);
+    } catch (e) {
+      console.warn('getAllCurrentLeads Firestore read warning:', e);
+    }
+  }
+  const cached = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+  return deduplicateLeadsList(cached);
+};
+
 // 1. Subscribe to Leads (Real-time listener with Two-Way Cloud Sync)
 export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) => {
   // Emit local cache immediately so UI is instantaneous
-  const localLeads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+  const rawLocal = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+  const localLeads = deduplicateLeadsList(rawLocal);
   if (localLeads.length > 0) {
     localLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     callback(localLeads);
@@ -64,10 +189,11 @@ export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) 
   if (isFirebaseConfigured() && db) {
     const leadsRef = collection(db, 'leads');
     return onSnapshot(leadsRef, (snapshot) => {
-      const cloudLeads: Lead[] = [];
+      const rawCloud: Lead[] = [];
       snapshot.forEach((docSnap) => {
-        cloudLeads.push(docSnap.data() as Lead);
+        rawCloud.push(docSnap.data() as Lead);
       });
+      const cloudLeads = deduplicateLeadsList(rawCloud);
       cloudLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
       if (cloudLeads.length > 0) {
@@ -75,7 +201,7 @@ export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) 
         setStored(STORAGE_KEYS.LEADS, cloudLeads);
         callback(cloudLeads);
       } else if (localLeads.length > 0 && db) {
-        // Cloud is empty but local browser has leads: replicate local leads to Cloud Firestore
+        // Cloud is empty but local browser has leads: replicate unique local leads to Cloud Firestore
         const firestore = db;
         const CHUNK_SIZE = 100;
         for (let i = 0; i < localLeads.length; i += CHUNK_SIZE) {
@@ -92,14 +218,14 @@ export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) 
       }
     }, (error) => {
       console.warn('Firestore subscribeLeads error:', error);
-      const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+      const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
       callback(leads);
     });
   }
 
   // Local storage real-time listener across tabs and events
   const emitCurrent = () => {
-    const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+    const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
     leads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     callback(leads);
   };
@@ -260,6 +386,13 @@ export const subscribeIngestionJobs = (callback: (jobs: IngestionJob[]) => void)
 
 // 5. Save Single Lead
 export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => {
+  // Enforce duplicate validation against current leads
+  const existing = await getAllCurrentLeads();
+  const dupCheck = checkIsDuplicateLead(lead, existing);
+  if (dupCheck.isDuplicate) {
+    throw new Error(dupCheck.reason || 'Lead already exists');
+  }
+
   const activity: Activity = {
     id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     leadId: lead.id,
@@ -292,7 +425,7 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
   }
 
   // Local storage update
-  const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+  const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
   setStored(STORAGE_KEYS.LEADS, [lead, ...leads]);
 
   const activities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
@@ -367,22 +500,77 @@ export const purgeAllLeads = async (): Promise<void> => {
   window.dispatchEvent(new Event('caventra_storage_update'));
 };
 
-// 8. Batch Import Leads (With Atomic Firestore or Storage confirmation)
+// 8. Batch Import Leads (With Atomic Firestore or Storage confirmation & Zero-Duplicate Guarantee)
 export const batchImportLeads = async (
   validLeads: Lead[],
   importRecord: ImportRecord,
   performedBy: User
 ): Promise<{ success: boolean; importedCount: number; duplicateCount: number; rejectedCount: number; error?: string }> => {
   try {
-    // 1. Immediately cache in local storage so this browser sees them instantaneously
-    const currentLeads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+    // 1. Fetch current leads from Cloud / local to guarantee authoritative deduplication
+    const currentLeads = await getAllCurrentLeads();
     const existingIds = new Set(currentLeads.map(l => l.id));
-    const toAdd = validLeads.filter(l => !existingIds.has(l.id));
-    const updatedLeads = [...toAdd, ...currentLeads];
-    setStored(STORAGE_KEYS.LEADS, updatedLeads);
+    const existingEmails = new Set(currentLeads.map(l => normalizeEmail(l.businessEmail)).filter(Boolean));
+    const existingDomains = new Set(currentLeads.map(l => normalizeDomain(l.normalizedDomain || l.website)).filter(Boolean));
+    const existingPhones = new Set(currentLeads.map(l => normalizePhone(l.businessPhone)).filter(Boolean));
+    const existingNames = new Set(currentLeads.map(l => normalizeBusinessName(l.businessName)).filter(Boolean));
+
+    const trulyNewLeads: Lead[] = [];
+    let duplicateCount = importRecord.duplicateCount || 0;
+
+    for (const lead of validLeads) {
+      if (existingIds.has(lead.id)) {
+        duplicateCount++;
+        continue;
+      }
+
+      const lEmail = normalizeEmail(lead.businessEmail);
+      const lDomain = normalizeDomain(lead.normalizedDomain || lead.website);
+      const lPhone = normalizePhone(lead.businessPhone);
+      const lName = normalizeBusinessName(lead.businessName);
+
+      if (lEmail && existingEmails.has(lEmail)) {
+        duplicateCount++;
+        continue;
+      }
+      if (lDomain && existingDomains.has(lDomain)) {
+        duplicateCount++;
+        continue;
+      }
+      if (lPhone && existingPhones.has(lPhone)) {
+        duplicateCount++;
+        continue;
+      }
+      if (lName && lName.length >= 4 && existingNames.has(lName)) {
+        duplicateCount++;
+        continue;
+      }
+
+      // Track intra-batch
+      existingIds.add(lead.id);
+      if (lEmail) existingEmails.add(lEmail);
+      if (lDomain) existingDomains.add(lDomain);
+      if (lPhone) existingPhones.add(lPhone);
+      if (lName) existingNames.add(lName);
+
+      trulyNewLeads.push(lead);
+    }
+
+    if (trulyNewLeads.length === 0) {
+      return {
+        success: true,
+        importedCount: 0,
+        duplicateCount: duplicateCount,
+        rejectedCount: importRecord.rejectedCount,
+      };
+    }
+
+    // 2. Immediately cache in local storage
+    const updatedLeads = [...trulyNewLeads, ...currentLeads];
+    setStored(STORAGE_KEYS.LEADS, deduplicateLeadsList(updatedLeads));
 
     const currentActivities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
-    const newActivities: Activity[] = validLeads.map(lead => ({
+    const newActivities: Activity[] = trulyNewLeads.map(lead => ({
       id: `act_imp_${lead.id}_${Date.now()}`,
       leadId: lead.id,
       type: 'import',
@@ -394,15 +582,21 @@ export const batchImportLeads = async (
     }));
     setStored(STORAGE_KEYS.ACTIVITIES, [...newActivities, ...currentActivities]);
 
-    const currentHistory = getStored<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
-    setStored(STORAGE_KEYS.IMPORT_HISTORY, [importRecord, ...currentHistory]);
+    const updatedRecord: ImportRecord = {
+      ...importRecord,
+      importedCount: trulyNewLeads.length,
+      duplicateCount: duplicateCount,
+    };
 
-    // 2. Replicate to Cloud Firestore in safe chunks of 100 so ALL team members on any device see them
+    const currentHistory = getStored<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
+    setStored(STORAGE_KEYS.IMPORT_HISTORY, [updatedRecord, ...currentHistory]);
+
+    // 3. Replicate to Cloud Firestore in safe chunks of 100 so ALL team members on any device see them
     if (isFirebaseConfigured() && db) {
       try {
         const CHUNK_SIZE = 100;
-        for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
-          const chunk = validLeads.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < trulyNewLeads.length; i += CHUNK_SIZE) {
+          const chunk = trulyNewLeads.slice(i, i + CHUNK_SIZE);
           const batch = writeBatch(db);
           for (const lead of chunk) {
             batch.set(doc(db, 'leads', lead.id), lead);
@@ -420,7 +614,7 @@ export const batchImportLeads = async (
           }
           await batch.commit();
         }
-        await setDoc(doc(db, 'import_history', importRecord.id), importRecord);
+        await setDoc(doc(db, 'import_history', updatedRecord.id), updatedRecord);
       } catch (cloudErr) {
         console.warn('Firestore cloud replication warning:', cloudErr);
       }
@@ -428,8 +622,8 @@ export const batchImportLeads = async (
 
     return {
       success: true,
-      importedCount: validLeads.length,
-      duplicateCount: importRecord.duplicateCount,
+      importedCount: trulyNewLeads.length,
+      duplicateCount: duplicateCount,
       rejectedCount: importRecord.rejectedCount,
     };
   } catch (err: any) {

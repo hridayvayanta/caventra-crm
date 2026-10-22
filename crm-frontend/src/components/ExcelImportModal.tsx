@@ -201,10 +201,15 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     const existingPhones = new Set(
       existingLeads.map(l => normalizePhone(l.businessPhone || '')).filter(Boolean)
     );
+    const existingNames = new Set(
+      existingLeads.map(l => l.businessName.trim().toLowerCase().replace(/[^a-z0-9]/g, '')).filter(n => n.length >= 4)
+    );
 
     // Intra-file duplicate trackers
     const seenDomainsInFile = new Set<string>();
     const seenEmailsInFile = new Set<string>();
+    const seenPhonesInFile = new Set<string>();
+    const seenNamesInFile = new Set<string>();
 
     const results: ParsedRowResult[] = [];
 
@@ -270,7 +275,23 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         if (existingPhones.has(normPhone)) {
           isDuplicate = true;
           duplicateReason = `Phone number matches existing CRM contact`;
+        } else if (seenPhonesInFile.has(normPhone)) {
+          isDuplicate = true;
+          duplicateReason = `Duplicate phone number found multiple times in file`;
         }
+        seenPhonesInFile.add(normPhone);
+      }
+
+      const normName = rawName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!isDuplicate && normName && normName.length >= 4) {
+        if (existingNames.has(normName)) {
+          isDuplicate = true;
+          duplicateReason = `Company "${rawName}" already exists in CRM`;
+        } else if (seenNamesInFile.has(normName)) {
+          isDuplicate = true;
+          duplicateReason = `Duplicate company "${rawName}" found multiple times in file`;
+        }
+        seenNamesInFile.add(normName);
       }
 
       const isValid = validationErrors.length === 0;

@@ -27,7 +27,9 @@ import {
   purgeAllLeads,
   batchImportLeads, 
   recordContactCompletion, 
-  completeFollowUpTask 
+  completeFollowUpTask,
+  checkIsDuplicateLead,
+  normalizeDomain
 } from './services/db';
 import { 
   getCurrentSessionUser, 
@@ -406,13 +408,18 @@ export function App() {
     }
   };
 
-  // Add lead manually
+  // Add lead manually with strict duplicate validation
   const handleAddLead = async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'normalizedDomain'>) => {
-    const cleanDomain = leadData.website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].toLowerCase();
+    const cleanDomain = normalizeDomain(leadData.website);
     
-    // Check duplicates
-    if (leads.some(l => l.normalizedDomain === cleanDomain)) {
-      alert(`A lead with website domain "${cleanDomain}" already exists in the system!`);
+    // Check duplicates against all current leads
+    const dupCheck = checkIsDuplicateLead({
+      ...leadData,
+      normalizedDomain: cleanDomain,
+    }, leads);
+
+    if (dupCheck.isDuplicate) {
+      alert(`Cannot add lead: ${dupCheck.reason}`);
       return;
     }
 

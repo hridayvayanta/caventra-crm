@@ -1,5 +1,12 @@
 import { Lead, User, IngestionJob, ImportRecord } from '../types/crm';
-import { batchImportLeads } from './db';
+import { 
+  batchImportLeads, 
+  getAllCurrentLeads, 
+  normalizeDomain, 
+  normalizeEmail, 
+  normalizePhone, 
+  normalizeBusinessName 
+} from './db';
 
 export const DEFAULT_DRIVE_WEB_APP_URL = 
   'https://script.google.com/macros/s/AKfycbxsUGci8s8exsbMvAew3Kc684s2c2S1-q0vL7EthpAUA80CVv8TDcL5b10NeSU-Ob8PHg/exec';
@@ -17,17 +24,6 @@ export const setDriveWebAppUrl = (url: string): void => {
   localStorage.setItem(STORAGE_KEYS.WEB_APP_URL, url.trim());
 };
 
-const normalizeDomain = (url: string): string => {
-  if (!url) return '';
-  return url
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//i, '')
-    .replace(/^www\./i, '')
-    .split('/')[0]
-    .split('?')[0];
-};
-
 export interface DriveSyncResult {
   success: boolean;
   filesFound: number;
@@ -40,7 +36,7 @@ export interface DriveSyncResult {
 
 export const syncLeadsFromGoogleDrive = async (
   currentUser: User,
-  existingLeads: Lead[],
+  existingLeads?: Lead[],
   customUrl?: string
 ): Promise<DriveSyncResult> => {
   const url = customUrl || getDriveWebAppUrl();
@@ -67,24 +63,21 @@ export const syncLeadsFromGoogleDrive = async (
     const filesFound = data.filesFound || 0;
     const now = new Date().toISOString();
 
-    // Fall back to local storage if existingLeads is not yet populated
-    const baseLeads: Lead[] = (existingLeads && existingLeads.length > 0)
-      ? existingLeads
-      : (() => {
-          try {
-            const raw = localStorage.getItem('caventra_leads');
-            return raw ? JSON.parse(raw) : [];
-          } catch {
-            return [];
-          }
-        })();
+    // Authoritative fetch from database to guarantee cross-device deduplication
+    const baseLeads = await getAllCurrentLeads();
 
-    // Deduplication sets (by domain and by email)
+    // Deduplication sets (by domain, email, phone, and company name)
     const existingDomains = new Set(
-      baseLeads.map(l => l.normalizedDomain).filter(Boolean)
+      baseLeads.map(l => normalizeDomain(l.normalizedDomain || l.website)).filter(Boolean)
     );
     const existingEmails = new Set(
-      baseLeads.map(l => (l.businessEmail || l.email || '').toLowerCase()).filter(Boolean)
+      baseLeads.map(l => normalizeEmail(l.businessEmail)).filter(Boolean)
+    );
+    const existingPhones = new Set(
+      baseLeads.map(l => normalizePhone(l.businessPhone)).filter(Boolean)
+    );
+    const existingNames = new Set(
+      baseLeads.map(l => normalizeBusinessName(l.businessName)).filter(Boolean)
     );
 
     const validLeads: Lead[] = [];
@@ -98,13 +91,13 @@ export const syncLeadsFromGoogleDrive = async (
         continue;
       }
 
-      const email = String(raw.email || raw.businessEmail || '').trim().toLowerCase();
+      const email = normalizeEmail(String(raw.email || raw.businessEmail || ''));
       const rawPhone = String(raw.phone || raw.businessPhone || '').trim();
-      const cleanPhone = rawPhone.replace(/[^\d+]/g, '');
+      const cleanPhone = normalizePhone(rawPhone);
 
       // Strict Validation: Company name is mandatory AND must have at least one contact channel (email, phone, or both)
       const hasEmail = Boolean(email && email.includes('@') && email.includes('.'));
-      const hasPhone = Boolean(cleanPhone && cleanPhone.replace(/[^\d]/g, '').length >= 7);
+      const hasPhone = Boolean(cleanPhone && cleanPhone.length >= 7);
 
       if (!hasEmail && !hasPhone) {
         rejectedCount++;
@@ -113,12 +106,15 @@ export const syncLeadsFromGoogleDrive = async (
 
       const website = String(raw.website || '').trim();
       const normDomain = normalizeDomain(website);
+      const normName = normalizeBusinessName(company);
 
-      // Check duplicates
-      const isDomainDup = normDomain && existingDomains.has(normDomain);
-      const isEmailDup = hasEmail && existingEmails.has(email);
+      // Check duplicates across all dimensions
+      const isDomainDup = Boolean(normDomain && existingDomains.has(normDomain));
+      const isEmailDup = Boolean(hasEmail && existingEmails.has(email));
+      const isPhoneDup = Boolean(hasPhone && existingPhones.has(cleanPhone));
+      const isNameDup = Boolean(normName.length >= 4 && existingNames.has(normName));
 
-      if (isDomainDup || isEmailDup) {
+      if (isDomainDup || isEmailDup || isPhoneDup || isNameDup) {
         duplicateCount++;
         continue;
       }
@@ -126,9 +122,18 @@ export const syncLeadsFromGoogleDrive = async (
       // Add to seen sets to avoid duplicates within the incoming batch
       if (normDomain) existingDomains.add(normDomain);
       if (hasEmail) existingEmails.add(email);
+      if (hasPhone) existingPhones.add(cleanPhone);
+      if (normName) existingNames.add(normName);
+
+      // Deterministic ID so repeat syncs never duplicate Firestore documents
+      const leadKey = (normDomain && !normDomain.includes('unknown') && !normDomain.endsWith('.local'))
+        ? normDomain
+        : (email || cleanPhone || normName);
+      const cleanKey = leadKey.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 48);
+      const deterministicId = `lead_drive_${cleanKey}`;
 
       const lead: Lead = {
-        id: `lead_drive_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: deterministicId,
         businessName: company,
         website: website,
         normalizedDomain: normDomain,
