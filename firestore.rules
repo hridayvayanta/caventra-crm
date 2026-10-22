@@ -118,5 +118,10 @@ service cloud.firestore {
     match /gmail_auth/{authId} {
       allow read, write: if false;
     }
+
+    // 9. Default Deny on any unspecified collections & documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

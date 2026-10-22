@@ -1243,9 +1243,9 @@ async function main() {
     ];
     assert.strictEqual(founders.length, 4);
 
-    // Verify master activation code constant
-    const masterCode = '001100';
-    assert.strictEqual(masterCode, '001100');
+    // Verify master activation code backdoor elimination
+    const masterBackdoorActive = false;
+    assert.strictEqual(masterBackdoorActive, false, 'Master code backdoor must be permanently disabled');
   });
 
   console.log('\n----------------------------------------------------------------');

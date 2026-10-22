@@ -20,32 +20,24 @@ import { auth, db, isFirebaseConfigured } from './firebase';
 import { User, ActivationCodeRecord, UserRole, UserStatus } from '../types/crm';
 import { INITIAL_USERS } from '../data/mockData';
 
-// Predefined Static Founders with direct access
-export const STATIC_FOUNDER_CREDENTIALS: Record<string, { name: string; password: string; role: 'founder' }> = {
-  'hridayvayanta7@gmail.com': {
-    name: 'Hriday Vayanta',
-    password: 'hridaycaventra@0000',
-    role: 'founder',
-  },
-  'hridayvayanta@gmail.com': {
-    name: 'Hriday Vayanta',
-    password: 'hridaycaventra@0000',
-    role: 'founder',
-  },
-  'vednimbark08@gmail.com': {
-    name: 'Ved Nimbark',
-    password: 'vedcaventra@0000',
-    role: 'founder',
-  },
-  'sauranahmed12345678@gmail.com': {
-    name: 'Sauran Ahmed',
-    password: 'saurancaventra@0000',
-    role: 'founder',
-  },
+// Authorized Founders Registry (Identities Only — Zero Plaintext Passwords in Source Code)
+export const KNOWN_FOUNDERS: Record<string, { name: string; initials: string; role: 'founder' }> = {
+  'hridayvayanta7@gmail.com': { name: 'Hriday Vayanta', initials: 'HV', role: 'founder' },
+  'hridayvayanta@gmail.com': { name: 'Hriday Vayanta', initials: 'HV', role: 'founder' },
+  'vednimbark08@gmail.com': { name: 'Ved Nimbark', initials: 'VN', role: 'founder' },
+  'sauranahmed12345678@gmail.com': { name: 'Sauran Ahmed', initials: 'SA', role: 'founder' },
+  'hriday@caventra.com': { name: 'Hriday Vayanta', initials: 'HV', role: 'founder' },
 };
 
-// Universal Founder Activation Code for employees
-export const MASTER_EMPLOYEE_ACTIVATION_CODE = '001100';
+// Cryptographic Password Hashes (SHA-256) for offline fallback/development mode
+// Notice: Plaintext passwords are NEVER stored in source code.
+const FALLBACK_FOUNDER_HASHES: Record<string, string> = {
+  'hridayvayanta7@gmail.com': 'f900e185f91cc28a6ad3ee97d87bb4468d85803606f166aed69c93cc0af4332d',
+  'hridayvayanta@gmail.com': 'f900e185f91cc28a6ad3ee97d87bb4468d85803606f166aed69c93cc0af4332d',
+  'vednimbark08@gmail.com': 'a901b6607fffc33f27ddbb65b7681337715b682a119ae50fc4512e4a67837840',
+  'sauranahmed12345678@gmail.com': '81dc42a7b18b71ef21cb753a4e84146b3c842191c11094add284b61287c4571a',
+  'hriday@caventra.com': 'f900e185f91cc28a6ad3ee97d87bb4468d85803606f166aed69c93cc0af4332d',
+};
 
 // Local storage keys for offline/fallback mode
 const STORAGE_KEYS = {
@@ -180,12 +172,46 @@ export const registerEmployee = async (
     throw new Error(passCheck.errors.join('. '));
   }
 
-  const isInstantActivation = (rawCode === MASTER_EMPLOYEE_ACTIVATION_CODE);
   const nowIso = new Date().toISOString();
 
   // A. Real Firebase Auth & Firestore flow
   if (isFirebaseConfigured() && auth && db) {
     try {
+      // 1. If an activation code is provided at registration, verify it first
+      let preIssuedRecord: ActivationCodeRecord | null = null;
+      let preIssuedDocId: string | null = null;
+
+      if (rawCode) {
+        // Query activationCodes collection to check validity before creating auth account
+        const codesRef = collection(db, 'activationCodes');
+        const qCode = query(codesRef, where('employeeEmail', '==', email));
+        const codeSnap = await getDocs(qCode);
+
+        if (codeSnap.empty) {
+          throw new Error('Invalid activation code. No activation code is registered for this email address.');
+        }
+
+        const cDoc = codeSnap.docs[0];
+        const record = cDoc.data() as ActivationCodeRecord;
+
+        if (record.revoked) {
+          throw new Error('This activation code was revoked by your founder. Please request a new code.');
+        }
+        if (record.used) {
+          throw new Error('This activation code has already been redeemed.');
+        }
+        if (new Date() > new Date(record.expiresAt)) {
+          throw new Error('This activation code has expired. Please ask your founder to generate a new code.');
+        }
+        const enteredHash = await hashSHA256(rawCode);
+        if (enteredHash !== record.codeHash) {
+          throw new Error('Invalid activation code. Please check with your founder.');
+        }
+
+        preIssuedRecord = record;
+        preIssuedDocId = cDoc.id;
+      }
+
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
@@ -195,18 +221,24 @@ export const registerEmployee = async (
         email,
         phoneNumber: phone,
         role: 'employee',
-        status: isInstantActivation ? 'active' : 'pending_activation',
+        status: preIssuedRecord ? 'active' : 'pending_activation',
         initials: getInitials(name),
         createdAt: nowIso,
         registeredAt: nowIso,
-        ...(isInstantActivation ? { activatedAt: nowIso, activatedBy: 'Founder (Direct Registration 001100)' } : {})
+        ...(preIssuedRecord ? { activatedAt: nowIso, activatedBy: preIssuedRecord.issuedByName } : {})
       };
 
       // Write user profile to Firestore
       await setDoc(doc(db, 'users', uid), newUser);
 
-      if (isInstantActivation) {
-        // Keep authenticated session active!
+      if (preIssuedRecord && preIssuedDocId) {
+        // Mark code used
+        await updateDoc(doc(db, 'activationCodes', preIssuedDocId), {
+          used: true,
+          usedAt: nowIso,
+          employeeUid: uid,
+        });
+
         setStored(STORAGE_KEYS.ACTIVE_SESSION, newUser);
         return {
           success: true,
@@ -216,7 +248,7 @@ export const registerEmployee = async (
         };
       }
 
-      // Immediately sign out from Firebase if pending
+      // If pending approval, sign out from Firebase until activated
       await signOut(auth);
 
       return {
@@ -239,6 +271,29 @@ export const registerEmployee = async (
     throw new Error('An account with this email address already exists. Please sign in or ask your founder for an activation code.');
   }
 
+  // Check code if provided in fallback mode
+  let isCodeValid = false;
+  let codeIssuer = '';
+  if (rawCode) {
+    const codes = getStored<ActivationCodeRecord[]>(STORAGE_KEYS.ACTIVATION_CODES, []);
+    const matchingCode = codes.find(c => c.employeeEmail.toLowerCase() === email);
+    if (!matchingCode) {
+      throw new Error('Invalid activation code. No code registered for this email address.');
+    }
+    if (matchingCode.used || matchingCode.revoked || new Date() > new Date(matchingCode.expiresAt)) {
+      throw new Error('This activation code is no longer valid.');
+    }
+    const enteredHash = await hashSHA256(rawCode);
+    if (enteredHash !== matchingCode.codeHash) {
+      throw new Error('Invalid activation code.');
+    }
+    isCodeValid = true;
+    codeIssuer = matchingCode.issuedByName;
+    matchingCode.used = true;
+    matchingCode.usedAt = nowIso;
+    setStored(STORAGE_KEYS.ACTIVATION_CODES, codes);
+  }
+
   const uid = `emp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const newUser: User = {
     id: uid,
@@ -246,11 +301,11 @@ export const registerEmployee = async (
     email,
     phoneNumber: phone,
     role: 'employee',
-    status: isInstantActivation ? 'active' : 'pending_activation',
+    status: isCodeValid ? 'active' : 'pending_activation',
     initials: getInitials(name),
     createdAt: nowIso,
     registeredAt: nowIso,
-    ...(isInstantActivation ? { activatedAt: nowIso, activatedBy: 'Founder (Direct Registration 001100)' } : {})
+    ...(isCodeValid ? { activatedAt: nowIso, activatedBy: codeIssuer } : {})
   };
 
   const passHash = await hashSHA256(password);
@@ -260,7 +315,7 @@ export const registerEmployee = async (
 
   setStored(STORAGE_KEYS.USERS, [...users, newUser]);
 
-  if (isInstantActivation) {
+  if (isCodeValid) {
     setStored(STORAGE_KEYS.ACTIVE_SESSION, newUser);
     return {
       success: true,
@@ -287,43 +342,6 @@ export const loginUser = async (
 ): Promise<{ success: boolean; user: User }> => {
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. Direct Static Predefined Founder Authentication Check
-  if (STATIC_FOUNDER_CREDENTIALS[cleanEmail]) {
-    const cred = STATIC_FOUNDER_CREDENTIALS[cleanEmail];
-    if (cred.password !== pass) {
-      throw new Error('Incorrect email address or password.');
-    }
-
-    const founderUser: User = {
-      id: `founder_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-      name: cred.name,
-      email: cleanEmail,
-      role: 'founder',
-      status: 'active',
-      initials: getInitials(cred.name),
-      createdAt: '2026-01-01T00:00:00.000Z',
-    };
-
-    // If Firebase is configured, ensure user document exists in Firestore
-    if (isFirebaseConfigured() && db) {
-      try {
-        const userDocRef = doc(db, 'users', founderUser.id);
-        await setDoc(userDocRef, founderUser, { merge: true });
-      } catch (err) {
-        console.warn('Could not sync founder to Firestore:', err);
-      }
-    }
-
-    // Save founder in local storage users list if not present
-    const storedUsers = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    if (!storedUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
-      setStored(STORAGE_KEYS.USERS, [founderUser, ...storedUsers]);
-    }
-
-    setStored(STORAGE_KEYS.ACTIVE_SESSION, founderUser);
-    return { success: true, user: founderUser };
-  }
-
   // A. Firebase Auth
   if (isFirebaseConfigured() && auth && db) {
     try {
@@ -332,24 +350,29 @@ export const loginUser = async (
 
       // Fetch user profile from Firestore
       const userDocRef = doc(db, 'users', uid);
-      const userDocSnap = await getDoc(userDocRef);
+      let userDocSnap = await getDoc(userDocRef);
+
+      // Known founder provision check
+      if (KNOWN_FOUNDERS[cleanEmail]) {
+        const founderMeta = KNOWN_FOUNDERS[cleanEmail];
+        const founderUser: User = {
+          id: uid,
+          name: founderMeta.name,
+          email: cleanEmail,
+          role: 'founder',
+          status: 'active',
+          initials: founderMeta.initials,
+          createdAt: userDocSnap.exists() ? (userDocSnap.data() as User).createdAt || new Date().toISOString() : new Date().toISOString(),
+        };
+
+        if (!userDocSnap.exists() || (userDocSnap.data() as User).role !== 'founder') {
+          await setDoc(userDocRef, founderUser, { merge: true });
+        }
+        setStored(STORAGE_KEYS.ACTIVE_SESSION, founderUser);
+        return { success: true, user: founderUser };
+      }
 
       if (!userDocSnap.exists()) {
-        // Check if this is the founder email hriday@caventra.com
-        if (cleanEmail === 'hriday@caventra.com') {
-          const founderUser: User = {
-            id: uid,
-            name: 'Hriday Vayanta',
-            email: cleanEmail,
-            role: 'founder',
-            status: 'active',
-            initials: 'HV',
-            createdAt: new Date().toISOString(),
-          };
-          await setDoc(userDocRef, founderUser);
-          setStored(STORAGE_KEYS.ACTIVE_SESSION, founderUser);
-          return { success: true, user: founderUser };
-        }
         await signOut(auth);
         throw new Error('User profile record missing in database.');
       }
@@ -383,18 +406,45 @@ export const loginUser = async (
     }
   }
 
-  // B. Offline / Local Storage fallback
+  // B. Offline / Local Storage fallback mode
+  // Check known founder credentials via cryptographic SHA-256 hash
+  if (KNOWN_FOUNDERS[cleanEmail]) {
+    const founderMeta = KNOWN_FOUNDERS[cleanEmail];
+    const expectedHash = FALLBACK_FOUNDER_HASHES[cleanEmail];
+    const passDict = getStored<Record<string, string>>(STORAGE_KEYS.PASSWORDS, {});
+    const customHash = passDict[cleanEmail];
+    const enteredHash = await hashSHA256(pass);
+
+    const validHash = customHash || expectedHash;
+    if (!validHash || enteredHash !== validHash) {
+      throw new Error('Incorrect email address or password.');
+    }
+
+    const founderUser: User = {
+      id: `founder_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      name: founderMeta.name,
+      email: cleanEmail,
+      role: 'founder',
+      status: 'active',
+      initials: founderMeta.initials,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    const storedUsers = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    if (!storedUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
+      setStored(STORAGE_KEYS.USERS, [founderUser, ...storedUsers]);
+    }
+
+    setStored(STORAGE_KEYS.ACTIVE_SESSION, founderUser);
+    return { success: true, user: founderUser };
+  }
+
+  // Regular employee fallback check
   const users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
   const foundUser = users.find(u => u.email.toLowerCase() === cleanEmail);
 
   if (!foundUser) {
     throw new Error('Incorrect email address or password.');
-  }
-
-  // Founder bypass
-  if (foundUser.role === 'founder' || foundUser.role === 'admin') {
-    setStored(STORAGE_KEYS.ACTIVE_SESSION, foundUser);
-    return { success: true, user: foundUser };
   }
 
   // Check password for employees
@@ -535,75 +585,6 @@ export const verifyActivationCode = async (
 
   if (!cleanEmail || !cleanCode) {
     throw new Error('Please enter your registered email and the activation code provided by your founder.');
-  }
-
-  // Master Founder Activation Code (001100) Check
-  if (cleanCode === MASTER_EMPLOYEE_ACTIVATION_CODE) {
-    const nowIso = new Date().toISOString();
-    let cloudActivated = false;
-
-    // A. Firebase Firestore Flow
-    if (isFirebaseConfigured() && db) {
-      try {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('email', '==', cleanEmail));
-        const userSnapshot = await getDocs(q);
-
-        if (!userSnapshot.empty) {
-          const employeeDoc = userSnapshot.docs[0];
-          const employeeData = employeeDoc.data() as User;
-
-          if (employeeData.status === 'active') {
-            return {
-              success: true,
-              message: 'Your account is already active. Please proceed to the sign-in screen.',
-            };
-          }
-
-          await updateDoc(doc(db, 'users', employeeDoc.id), {
-            status: 'active',
-            activatedAt: nowIso,
-            activatedBy: 'Founder (Master Code 001100)',
-          });
-          cloudActivated = true;
-        }
-      } catch (err) {
-        console.warn('Firestore verification attempt error:', err);
-      }
-    }
-
-    // B. Local Storage Fallback Flow
-    const users = getStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    const employee = users.find(u => u.email.toLowerCase() === cleanEmail);
-
-    if (employee) {
-      if (employee.status === 'active') {
-        return {
-          success: true,
-          message: 'Your account is already active. Please proceed to the sign-in screen.',
-        };
-      }
-
-      const updatedUsers = users.map(u => 
-        u.id === employee.id 
-          ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Master Code 001100)' } 
-          : u
-      );
-      setStored(STORAGE_KEYS.USERS, updatedUsers);
-      return {
-        success: true,
-        message: 'Account successfully activated! Please sign in with your email and password.',
-      };
-    }
-
-    if (cloudActivated) {
-      return {
-        success: true,
-        message: 'Account successfully activated! Please sign in with your email and password.',
-      };
-    }
-
-    throw new Error('No registered account was found with this email. Please register first.');
   }
 
   // A. Firebase Firestore Flow for Custom Single-Use Codes

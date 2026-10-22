@@ -39,13 +39,13 @@ function doPost(e) {
 
 /**
  * Handle GET requests:
- * 1. If action=send_email: Test or fallback outreach dispatch
- * 2. Default: Run Google Drive scheduled ingestion & return extracted leads for Sync Drive
+ * Read-only status & scheduled ingestion check.
+ * NOTICE: Email sending via GET is strictly DISABLED to prevent open relay and CSRF attacks.
  */
 function doGet(e) {
   try {
     if (e && e.parameter && (e.parameter.action === 'send_email' || e.parameter.action === 'send_outreach')) {
-      return jsonResponse(handleSendOutreachEmail(e.parameter));
+      return jsonResponse({ success: false, error: 'Method Not Allowed: Email dispatch requires authenticated POST request' }, 405);
     }
 
     // Default GET: Fetch leads from connected Google Drive Folder
@@ -296,19 +296,49 @@ function updateFirestoreDocument(collection, docId, data) {
 }
 
 /**
- * Handle real outreach email transmission via native GmailApp
+ * Handle real outreach email transmission via native GmailApp with strict authorization
  */
 function handleSendOutreachEmail(data) {
-  var to = data.to;
-  var subject = data.subject;
-  var body = data.body;
+  var to = (data.to || '').trim().toLowerCase();
+  var subject = (data.subject || '').trim();
+  var body = data.body || '';
   var fromName = data.fromName || 'CAVENTRA Team';
+  var secret = data.secret || data.authToken;
 
+  // 1. Authorization check: If a secret is set in ScriptProperties, enforce it
+  var configuredSecret = PropertiesService.getScriptProperties().getProperty('CAVENTRA_OUTREACH_SECRET');
+  if (configuredSecret && secret !== configuredSecret) {
+    throw new Error('Unauthorized: Invalid or missing outreach authorization secret');
+  }
+
+  // 2. Input validation
   if (!to || !subject || !body) {
     throw new Error('Missing required fields: to, subject, or body');
   }
 
-  // Native Google Apps Script GmailApp: sends real email from founder's Google account!
+  // RFC-compliant email regex check
+  var emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(to) || to.length > 254) {
+    throw new Error('Invalid recipient email address');
+  }
+
+  // Payload size constraints
+  if (subject.length > 300) {
+    throw new Error('Subject exceeds maximum length of 300 characters');
+  }
+  if (body.length > 50000) {
+    throw new Error('Email body exceeds maximum permitted size (50KB)');
+  }
+
+  // 3. Suppression list check if Firestore bridge is active
+  if (typeof FirestoreClient !== 'undefined') {
+    var supDoc = FirestoreClient.getDocument('email_suppressions', to);
+    if (supDoc) {
+      throw new Error('Delivery aborted: Recipient is registered on the suppression/opt-out list');
+    }
+  }
+
+  // Native Google Apps Script GmailApp: sends real email from founder's Google account
   GmailApp.sendEmail(to, subject, body, {
     name: fromName
   });

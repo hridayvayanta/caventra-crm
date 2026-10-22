@@ -32,25 +32,34 @@ service cloud.firestore {
 
     // 1. Users collection
     match /users/{userId} {
+      // Employees can read their own profile; Founders can read all employee profiles
       allow read: if isSignedIn() && (isOwner(userId) || isFounder());
+
+      // On registration, an employee can ONLY create their own profile with 'employee' role and 'pending_activation' status
       allow create: if isOwner(userId) &&
         request.resource.data.role == 'employee' &&
         request.resource.data.status == 'pending_activation' &&
         request.resource.data.id == userId;
+
+      // Only a Founder can change an employee's role, status, or activation fields.
+      // An employee updating their own profile CANNOT alter their status or role.
       allow update: if isFounder() || (
         isOwner(userId) &&
         request.resource.data.role == resource.data.role &&
         request.resource.data.status == resource.data.status
       );
+
+      // Deletion allowed only by Founder
       allow delete: if isFounder();
     }
 
     // 2. Activation codes collection
+    // Strictly founder-only. Employees have NO read or write access to prevent code enumeration.
     match /activationCodes/{codeId} {
       allow read, write: if isFounder();
     }
 
-    // 3. Protected CRM collections
+    // 3. Protected CRM collections: Strictly forbidden for pending_activation or unauthenticated users
     match /leads/{leadId} {
       allow read, write: if isActiveUser();
     }
@@ -79,11 +88,13 @@ service cloud.firestore {
     }
 
     // 5. Email Jobs: Queue protection and anti-tamper.
+    // Browser employees cannot forge 'SENT' status or tamper with provider IDs.
     match /emailJobs/{jobId} {
       allow read: if isActiveUser();
       allow create: if isActiveUser() && 
         request.resource.data.status in ['QUEUED', 'SUPPRESSED'] &&
         request.resource.data.recipientEmail != null;
+      // Status updates to SENT or provider modifications require founder/server authorization
       allow update: if isFounder();
       allow delete: if isFounder();
     }
@@ -92,18 +103,24 @@ service cloud.firestore {
     match /emailEvents/{eventId} {
       allow read: if isActiveUser();
       allow create: if isActiveUser();
-      allow update, delete: if false;
+      allow update, delete: if false; // Immutable audit records
     }
 
-    // 7. Email Suppressions
+    // 7. Email Suppressions: Read by active users; suppressions can be created on opt-out/bounce
     match /email_suppressions/{emailId} {
       allow read: if isActiveUser();
       allow create: if isActiveUser();
       allow update, delete: if isFounder();
     }
 
-    // 8. Gmail OAuth Tokens & Secrets: Strictly server-side only
+    // 8. Gmail OAuth Tokens & Secrets: Strictly server-side only.
+    // Browser clients have ZERO read or write access under any circumstances.
     match /gmail_auth/{authId} {
+      allow read, write: if false;
+    }
+
+    // 9. Default Deny on any unspecified collections & documents
+    match /{document=**} {
       allow read, write: if false;
     }
   }

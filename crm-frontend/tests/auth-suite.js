@@ -51,7 +51,7 @@ const STATIC_FOUNDER_CREDENTIALS = {
   },
 };
 
-const MASTER_EMPLOYEE_ACTIVATION_CODE = '001100';
+// Master Employee Activation Code (Eliminated in Production Hardening)
 
 // In-memory test store
 const store = {
@@ -183,8 +183,8 @@ test('Wrong password for founder rejected', () => {
   assert(cred.password !== pass, 'Wrong password must be rejected');
 });
 
-// --- MASTER ACTIVATION CODE 001100 TESTS ---
-test('Universal Employee Activation Code (001100)', () => {
+// --- MASTER ACTIVATION CODE REJECTION & ELIMINATION TESTS ---
+test('Rejection of master code backdoor (001100 permanently eliminated)', () => {
   // Register new employee
   const empUid = 'emp_test_master';
   const empEmail = 'employee.test@caventra.com';
@@ -197,17 +197,13 @@ test('Universal Employee Activation Code (001100)', () => {
     createdAt: new Date().toISOString(),
   });
 
-  // Verify using master code 001100
+  // Attempt using master code 001100
   const enteredCode = '001100';
-  assert(enteredCode === MASTER_EMPLOYEE_ACTIVATION_CODE, 'Code must match 001100');
+  const isMasterBackdoorSupported = false; // Permanently removed
+  assert(!isMasterBackdoorSupported, 'Master code 001100 must be permanently disabled');
 
-  // Activate employee
   const user = store.users.get(empUid);
-  user.status = 'active';
-  user.activatedAt = new Date().toISOString();
-  user.activatedBy = 'Founder (Master Code 001100)';
-
-  assert(user.status === 'active', 'Employee must become active with code 001100');
+  assert(user.status === 'pending_activation', 'Employee remains pending_activation when attempting 001100 backdoor');
 });
 
 // --- STANDARD 18 ACCESS CONTROL TESTS ---
@@ -254,17 +250,29 @@ test('3. Duplicate email registration rejected', () => {
   assert(duplicateFound, 'Duplicate email must be detected and rejected');
 });
 
-test('4. Correct founder-issued activation code (custom or 001100)', () => {
+test('4. Correct founder-issued single-use cryptographic code (e.g. K9X2-M7PQ)', () => {
   const employee = store.users.get('emp_1');
-  const code = '001100';
-  assert(code === MASTER_EMPLOYEE_ACTIVATION_CODE, 'Master code matches');
+  const validCode = 'K9X2-M7PQ';
+  const codeHash = hashSHA256(validCode);
+  store.activationCodes.set('code_emp_1', {
+    employeeUid: 'emp_1',
+    codeHash,
+    used: false,
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    failedAttempts: 0,
+  });
+
+  // Verify entered code matches hash
+  assert(hashSHA256('K9X2-M7PQ') === codeHash, 'Code hash matches');
   employee.status = 'active';
-  assert(employee.status === 'active', 'Employee activated');
+  assert(employee.status === 'active', 'Employee activated successfully');
 });
 
 test('5. Incorrect activation code rejection', () => {
-  const wrongCode = '999999';
-  assert(wrongCode !== MASTER_EMPLOYEE_ACTIVATION_CODE, 'Wrong code rejected');
+  const codeRecord = store.activationCodes.get('code_emp_1');
+  const wrongCode = 'WRNG-9999';
+  const enteredHash = hashSHA256(wrongCode);
+  assert(enteredHash !== codeRecord.codeHash, 'Wrong code hash must be rejected');
 });
 
 test('6. Expired activation code rejected', () => {

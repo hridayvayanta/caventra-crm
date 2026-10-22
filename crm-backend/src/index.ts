@@ -29,8 +29,17 @@ export default {
         });
       }
 
-      // 2. Fetch all leads
+      // 2. Fetch all leads (Protected: Requires Authorization or Ingestion Secret)
       if (url.pathname === "/api/leads" && request.method === "GET") {
+        const secret = request.headers.get("X-CAVENTRA-SECRET");
+        const authHeader = request.headers.get("Authorization");
+        if (env.CAVENTRA_INGEST_SECRET && secret !== env.CAVENTRA_INGEST_SECRET && (!authHeader || !authHeader.startsWith("Bearer "))) {
+          return new Response(JSON.stringify({ error: "Unauthorized: Access token or secret required to view confidential CRM leads" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         const { results } = await env.DB.prepare("SELECT * FROM leads ORDER BY created_at DESC").all();
         return new Response(JSON.stringify(results), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },

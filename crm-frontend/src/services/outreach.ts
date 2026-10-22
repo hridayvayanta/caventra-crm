@@ -121,21 +121,32 @@ export const generateOptOutToken = (email: string, leadId: string): string => {
   return Math.abs(hash).toString(36) + Math.random().toString(36).substring(2, 8);
 };
 
-// Template rendering
+// HTML / XSS Sanitizer for Email Template Interpolation
+export const sanitizeHtml = (str: string): string => {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+// Template rendering with strict XSS sanitization
 export const renderTemplate = (
   template: string, 
   lead: Partial<Lead>, 
   optOutUrl: string
 ): string => {
-  const contactName = lead.contactName && lead.contactName.trim().length > 0 
+  const contactName = sanitizeHtml(lead.contactName && lead.contactName.trim().length > 0 
     ? lead.contactName.trim() 
-    : 'there';
-  const businessName = lead.businessName ? lead.businessName.trim() : 'your business';
-  const website = lead.website ? lead.website.trim() : 'your website';
-  const city = lead.city && lead.city.trim() ? lead.city.trim() : 'your area';
-  const serviceOpportunity = lead.serviceOpportunity && lead.serviceOpportunity.trim() 
+    : 'there');
+  const businessName = sanitizeHtml(lead.businessName ? lead.businessName.trim() : 'your business');
+  const website = sanitizeHtml(lead.website ? lead.website.trim() : 'your website');
+  const city = sanitizeHtml(lead.city && lead.city.trim() ? lead.city.trim() : 'your area');
+  const serviceOpportunity = sanitizeHtml(lead.serviceOpportunity && lead.serviceOpportunity.trim() 
     ? lead.serviceOpportunity.trim() 
-    : 'website & digital systems';
+    : 'website & digital systems');
 
   return template
     .replace(/\{\{contactName\}\}/gi, contactName)
