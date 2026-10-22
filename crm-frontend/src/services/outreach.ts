@@ -444,9 +444,6 @@ export const queueOutreachForLead = async (
     });
     await batch.commit();
 
-    // Auto-deliver immediately if campaign is ACTIVE
-    processJobDelivery(jobId, campaign).catch(e => console.warn('Auto delivery error:', e));
-
     return { enqueued: true, jobId };
   }
 
@@ -475,9 +472,6 @@ export const queueOutreachForLead = async (
   camp.stats.queuedCount = (camp.stats.queuedCount || 0) + 1;
   setStored(STORAGE_KEYS.CAMPAIGN, camp);
 
-  // Auto-deliver immediately in local mode if campaign is ACTIVE
-  processJobDelivery(jobId, campaign).catch(e => console.warn('Auto delivery error:', e));
-
   return { enqueued: true, jobId };
 };
 
@@ -501,8 +495,16 @@ export const processJobDelivery = async (
     job = jobs.find(j => j.id === jobId) || null;
   }
 
-  if (!job || (job.status !== 'QUEUED' && job.status !== 'SENDING')) {
-    return { success: false, error: 'Job not found or not in QUEUED state.' };
+  if (!job || job.status !== 'QUEUED') {
+    return { success: false, error: 'Job not found, already sent, or currently in progress.' };
+  }
+
+  // Immediate atomic lock: mark status as SENDING to prevent parallel duplicate sends
+  if (isFirebaseConfigured() && db) {
+    await updateDoc(doc(db, 'emailJobs', jobId), { status: 'SENDING' });
+  } else {
+    const jobs = getStored<EmailJob[]>(STORAGE_KEYS.JOBS, []);
+    setStored(STORAGE_KEYS.JOBS, jobs.map(j => j.id === jobId ? { ...j, status: 'SENDING' as const } : j));
   }
 
   // 3. Suppression check
