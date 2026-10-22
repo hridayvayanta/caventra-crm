@@ -149,19 +149,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Import Excel</span>
             </button>
 
-            {/* Sync Drive Button */}
-            {onSyncDrive && (
-              <button
-                onClick={onSyncDrive}
-                disabled={isSyncingDrive}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold border border-blue-300 transition-all shadow-sm disabled:opacity-50"
-                title="Sync leads automatically from connected Google Drive folder"
-              >
-                <FolderSync className={`w-4 h-4 text-blue-600 ${isSyncingDrive ? 'animate-spin' : ''}`} />
-                <span>{isSyncingDrive ? 'Syncing...' : 'Sync Drive'}</span>
-              </button>
-            )}
-
             {/* Add Lead Button */}
             <button
               onClick={onOpenAddModal}
