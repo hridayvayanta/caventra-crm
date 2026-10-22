@@ -29,8 +29,9 @@ export const KNOWN_FOUNDERS: Record<string, { name: string; initials: string; ro
   'hriday@caventra.com': { name: 'Hriday Vayanta', initials: 'HV', role: 'founder' },
 };
 
-// Universal Founder Activation Code for authorized employee onboarding
-export const MASTER_EMPLOYEE_ACTIVATION_CODE = '001100';
+// Universal Founder Activation Code (Cryptographically Hashed with SHA-256)
+// The plaintext code is NEVER bundled into client JavaScript or exposed in browser Inspect/Sources.
+export const UNIVERSAL_ACTIVATION_CODE_HASH = 'a78b7c21dc8ed6694424e4afcd8ccc7e45f9b454f2deec3e84bbb1befe1baeb9';
 
 // Cryptographic Password Hashes (SHA-256) for offline fallback/development mode
 const FALLBACK_FOUNDER_HASHES: Record<string, string> = {
@@ -174,7 +175,13 @@ export const registerEmployee = async (
     throw new Error(passCheck.errors.join('. '));
   }
 
-  const isMasterCode = (rawCode === MASTER_EMPLOYEE_ACTIVATION_CODE);
+  let isMasterCode = false;
+  if (rawCode) {
+    const rawHash = await hashSHA256(rawCode);
+    if (rawHash === UNIVERSAL_ACTIVATION_CODE_HASH) {
+      isMasterCode = true;
+    }
+  }
   const nowIso = new Date().toISOString();
 
   // A. Real Firebase Auth & Firestore flow
@@ -219,7 +226,7 @@ export const registerEmployee = async (
       const uid = userCredential.user.uid;
 
       const isActivated = isMasterCode || Boolean(preIssuedRecord);
-      const activatedBy = isMasterCode ? 'Founder Approval (Code 001100)' : preIssuedRecord?.issuedByName;
+      const activatedBy = isMasterCode ? 'Founder Approval' : preIssuedRecord?.issuedByName;
 
       const newUser: User = {
         id: uid,
@@ -280,7 +287,7 @@ export const registerEmployee = async (
 
   // Check code if provided in fallback mode
   let isCodeValid = isMasterCode;
-  let codeIssuer = isMasterCode ? 'Founder Approval (Code 001100)' : '';
+  let codeIssuer = isMasterCode ? 'Founder Approval' : '';
 
   if (rawCode && !isMasterCode) {
     const codes = getStored<ActivationCodeRecord[]>(STORAGE_KEYS.ACTIVATION_CODES, []);
@@ -595,8 +602,9 @@ export const verifyActivationCode = async (
     throw new Error('Please enter your registered email and the activation code provided by your founder.');
   }
 
-  // 1. Universal Founder Activation Code (001100) Verification
-  if (cleanCode === MASTER_EMPLOYEE_ACTIVATION_CODE) {
+  // 1. Universal Founder Activation Code Verification (Via SHA-256 Hash Comparison)
+  const enteredCodeHash = await hashSHA256(cleanCode);
+  if (enteredCodeHash === UNIVERSAL_ACTIVATION_CODE_HASH) {
     const nowIso = new Date().toISOString();
     let cloudActivated = false;
 
@@ -621,7 +629,7 @@ export const verifyActivationCode = async (
           await updateDoc(doc(db, 'users', employeeDoc.id), {
             status: 'active',
             activatedAt: nowIso,
-            activatedBy: 'Founder (Approval Code 001100)',
+            activatedBy: 'Founder Approval',
           });
           cloudActivated = true;
         }
@@ -644,7 +652,7 @@ export const verifyActivationCode = async (
 
       const updatedUsers = users.map(u => 
         u.id === employee.id 
-          ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder (Approval Code 001100)' } 
+          ? { ...u, status: 'active' as const, activatedAt: nowIso, activatedBy: 'Founder Approval' } 
           : u
       );
       setStored(STORAGE_KEYS.USERS, updatedUsers);
