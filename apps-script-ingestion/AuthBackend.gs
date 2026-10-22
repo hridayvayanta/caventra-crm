@@ -38,14 +38,23 @@ function doPost(e) {
 }
 
 /**
- * Handle GET requests for health check or fallback dispatch
+ * Handle GET requests:
+ * 1. If action=send_email: Test or fallback outreach dispatch
+ * 2. Default: Run Google Drive scheduled ingestion & return extracted leads for Sync Drive
  */
 function doGet(e) {
   try {
     if (e && e.parameter && (e.parameter.action === 'send_email' || e.parameter.action === 'send_outreach')) {
       return jsonResponse(handleSendOutreachEmail(e.parameter));
     }
+
+    // Default GET: Fetch leads from connected Google Drive Folder
+    if (typeof runScheduledIngestion === 'function') {
+      var result = runScheduledIngestion();
+      return jsonResponse(result);
+    }
   } catch (err) {
+    Logger.log('doGet error: ' + err.toString());
     return jsonResponse({ success: false, error: err.message }, 500);
   }
 
