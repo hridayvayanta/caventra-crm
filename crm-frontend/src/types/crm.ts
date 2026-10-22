@@ -10,6 +10,7 @@ export type LeadSection =
   | 'all' 
   | 'new' 
   | 'to_contact' 
+  | 'only_phone_numbers'
   | 'contacted' 
   | 'follow_ups' 
   | 'in_discussion' 

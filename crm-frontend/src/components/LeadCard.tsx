@@ -52,6 +52,12 @@ export const LeadCard: React.FC<LeadCardProps> = ({
                 <span>{lead.outreachStatus}</span>
               </span>
             )}
+            {!lead.businessEmail && lead.businessPhone && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <Phone className="w-2.5 h-2.5" />
+                <span>Phone Only</span>
+              </span>
+            )}
           </div>
         </div>
         <a
@@ -66,10 +72,23 @@ export const LeadCard: React.FC<LeadCardProps> = ({
         </a>
       </div>
 
-      {/* Location */}
-      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2.5">
-        <MapPin className="w-3.5 h-3.5 text-slate-400" />
-        <span>{lead.city}, {lead.country}</span>
+      {/* Location & Quick Phone */}
+      <div className="flex items-center justify-between text-xs text-slate-500 mb-2.5">
+        <div className="flex items-center gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+          <span>{lead.city}, {lead.country}</span>
+        </div>
+        {lead.businessPhone && (
+          <a
+            href={`tel:${lead.businessPhone}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition-colors"
+            title={`Call ${lead.businessPhone}`}
+          >
+            <Phone className="w-2.5 h-2.5 text-emerald-600" />
+            <span>{lead.businessPhone}</span>
+          </a>
+        )}
       </div>
 
       {/* Plain English Problem / Need */}

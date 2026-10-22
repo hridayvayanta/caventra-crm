@@ -6,6 +6,7 @@ import {
   Plus, 
   Users, 
   PhoneCall, 
+  Phone,
   CalendarClock, 
   Clock, 
   CheckCircle, 
@@ -40,6 +41,7 @@ interface NavbarProps {
   followUpsCount: number;
   newLeadsCount: number;
   pendingCount?: number;
+  onlyPhoneCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -61,6 +63,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   followUpsCount,
   newLeadsCount,
   pendingCount = 0,
+  onlyPhoneCount = 0,
 }) => {
   const isFounder = currentUser.role === 'founder' || currentUser.role === 'admin';
 
@@ -241,6 +244,29 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <PhoneCall className="w-3.5 h-3.5" />
             <span>To Contact</span>
+          </button>
+
+          {/* Dedicated "Only Phone Numbers" Section */}
+          <button
+            onClick={() => setCurrentSection('only_phone_numbers')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'only_phone_numbers'
+                ? 'bg-emerald-600 text-white shadow-sm font-bold border border-emerald-700'
+                : 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 font-semibold'
+            }`}
+            title="Businesses with phone numbers only (no email address on record)"
+          >
+            <Phone className={`w-3.5 h-3.5 ${currentSection === 'only_phone_numbers' ? 'text-white' : 'text-emerald-600'}`} />
+            <span>Only Phone Numbers</span>
+            {onlyPhoneCount > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
+                currentSection === 'only_phone_numbers'
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-emerald-200 text-emerald-900'
+              }`}>
+                {onlyPhoneCount}
+              </span>
+            )}
           </button>
 
           <button

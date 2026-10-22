@@ -186,12 +186,23 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 <div className="flex items-center justify-between mt-1">
                   <span className="font-semibold text-slate-800 font-mono">{lead.businessPhone || 'Not available'}</span>
                   {lead.businessPhone && (
-                    <a
-                      href={`tel:${lead.businessPhone}`}
-                      className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100"
-                    >
-                      Call
-                    </a>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <a
+                        href={`tel:${lead.businessPhone}`}
+                        className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100"
+                      >
+                        Call
+                      </a>
+                      <a
+                        href={`https://wa.me/${lead.businessPhone.replace(/[^\d]/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold text-xs hover:bg-emerald-100"
+                        title="Chat on WhatsApp"
+                      >
+                        WhatsApp
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>

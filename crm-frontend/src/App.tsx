@@ -69,7 +69,7 @@ import { RegisterView } from './components/auth/RegisterView';
 import { ActivationView } from './components/auth/ActivationView';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsConditions } from './components/TermsConditions';
-import { Shield, FileText, CheckCircle2, ShieldAlert, LogOut } from 'lucide-react';
+import { Shield, FileText, CheckCircle2, ShieldAlert, LogOut, Phone } from 'lucide-react';
 
 export function App() {
   // Authentication & Session State
@@ -337,6 +337,12 @@ export function App() {
         return leads.filter(l => l.status === 'new');
       case 'to_contact':
         return leads.filter(l => l.status === 'to_contact' || l.status === 'new');
+      case 'only_phone_numbers':
+        return leads.filter(l => {
+          const hasEmail = Boolean(l.businessEmail && l.businessEmail.trim());
+          const hasPhone = Boolean(l.businessPhone && l.businessPhone.trim());
+          return !hasEmail && hasPhone;
+        });
       case 'contacted':
         return leads.filter(l => l.status === 'contacted');
       case 'in_discussion':
@@ -650,6 +656,11 @@ export function App() {
   const pendingFollowUpsCount = followUps.filter(t => t.status === 'pending').length;
   const newLeadsCount = leads.filter(l => l.status === 'new').length;
   const pendingRegistrationsCount = allUsers.filter(u => u.status === 'pending_activation').length;
+  const onlyPhoneCount = leads.filter(l => {
+    const hasEmail = Boolean(l.businessEmail && l.businessEmail.trim());
+    const hasPhone = Boolean(l.businessPhone && l.businessPhone.trim());
+    return !hasEmail && hasPhone;
+  }).length;
 
   if (optOutMessage) {
     return (
@@ -708,6 +719,7 @@ export function App() {
         followUpsCount={pendingFollowUpsCount}
         newLeadsCount={newLeadsCount}
         pendingCount={pendingRegistrationsCount}
+        onlyPhoneCount={onlyPhoneCount}
       />
 
       {/* Main Content Area */}
@@ -786,8 +798,27 @@ export function App() {
               </div>
             ) : (
               <>
-                {/* 1-by-1 Paced Outreach Bar */}
-                {currentUser && (currentUser.role === 'founder' || currentUser.role === 'admin') && (
+                {/* Dedicated Phone-Only Outreach Notice */}
+                {currentSection === 'only_phone_numbers' && (
+                  <div className="mb-4 bg-emerald-50 border border-emerald-300 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
+                        <Phone className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">
+                          Direct Calling Queue ({filteredLeads.length} Businesses)
+                        </h4>
+                        <p className="text-xs text-emerald-800">
+                          These verified businesses have phone numbers on file but no email address. Perfect for direct phone calls, WhatsApp messages, or manual outreach.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 1-by-1 Paced Outreach Bar (Email Outreach Only) */}
+                {currentSection !== 'only_phone_numbers' && currentUser && (currentUser.role === 'founder' || currentUser.role === 'admin') && (
                   <PacedOutreachBar
                     campaign={campaign}
                     currentUser={currentUser}
