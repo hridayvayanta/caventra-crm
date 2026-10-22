@@ -8,6 +8,11 @@ interface LeadListViewProps {
   onSelectLead: (lead: Lead) => void;
   onUpdateStatus: (leadId: string, status: LeadStatus) => void;
   onOpenContactModal: (lead: Lead) => void;
+  selectedLeadIds?: string[];
+  onToggleSelectLead?: (leadId: string) => void;
+  onSelectAllLeads?: (selected: boolean) => void;
+  onDispatchSingleLead?: (lead: Lead) => void;
+  isDispatchingSingleId?: string | null;
 }
 
 export const LeadListView: React.FC<LeadListViewProps> = ({
@@ -16,6 +21,11 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
   onSelectLead,
   onUpdateStatus,
   onOpenContactModal,
+  selectedLeadIds = [],
+  onToggleSelectLead,
+  onSelectAllLeads,
+  onDispatchSingleLead,
+  isDispatchingSingleId,
 }) => {
   const getStatusBadge = (status: LeadStatus) => {
     switch (status) {
@@ -34,6 +44,16 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
+              {onToggleSelectLead && (
+                <th className="py-3 px-3 w-8 text-center" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={leads.length > 0 && selectedLeadIds.length === leads.length}
+                    onChange={(e) => onSelectAllLeads?.(e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </th>
+              )}
               <th className="py-3 px-4">Company Name</th>
               <th className="py-3 px-4">Location</th>
               <th className="py-3 px-4">Identified Need</th>
@@ -52,8 +72,18 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
                 <tr 
                   key={lead.id} 
                   onClick={() => onSelectLead(lead)}
-                  className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                  className={`hover:bg-slate-50 transition-colors cursor-pointer group ${selectedLeadIds.includes(lead.id) ? 'bg-blue-50/40' : ''}`}
                 >
+                  {onToggleSelectLead && (
+                    <td className="py-3.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedLeadIds.includes(lead.id)}
+                        onChange={() => onToggleSelectLead(lead.id)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   {/* Company & Domain */}
                   <td className="py-3.5 px-4">
                     <div className="flex items-center gap-2">
@@ -120,14 +150,28 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
 
                   {/* Direct Contact & Mark Completed Action */}
                   <td className="py-3.5 px-4" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={() => onOpenContactModal(lead)}
-                      className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold rounded border border-blue-200 transition-colors flex items-center gap-1"
-                    >
-                      <CheckCircle2 className="w-3 h-3 text-blue-600" />
-                      <span>Mark Contacted</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onOpenContactModal(lead)}
+                        className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold rounded border border-blue-200 transition-colors flex items-center gap-1"
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                        <span>Contacted</span>
+                      </button>
+                      {(lead.businessEmail || lead.email) && lead.outreachStatus !== 'sent' && onDispatchSingleLead && (
+                        <button
+                          type="button"
+                          title="Send 1-by-1 Outreach email now"
+                          disabled={isDispatchingSingleId === lead.id}
+                          onClick={() => onDispatchSingleLead(lead)}
+                          className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded border border-indigo-200 transition-colors flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <Mail className="w-3 h-3 text-indigo-600" />
+                          <span>{isDispatchingSingleId === lead.id ? '...' : '1-by-1'}</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                   {/* Follow-up / Last contact date */}

@@ -40,12 +40,16 @@ import {
   subscribeEmailJobs, 
   subscribeEmailEvents, 
   subscribeSuppressions, 
-  handleOptOut 
+  handleOptOut,
+  dispatchLeadOutreach,
+  toggleCampaignStatus,
+  validateEmailSyntax
 } from './services/outreach';
 import { isFirebaseConfigured } from './services/firebase';
 import { syncLeadsFromGoogleDrive } from './services/driveSync';
 import { Navbar } from './components/Navbar';
 import { StatsRow } from './components/StatsRow';
+import { PacedOutreachBar } from './components/PacedOutreachBar';
 import { LeadBoard } from './components/LeadBoard';
 import { LeadListView } from './components/LeadListView';
 import { EmptyState } from './components/EmptyState';
@@ -100,6 +104,17 @@ export function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+
+  // 1-by-1 Paced Outreach Queue State (1 Email / Minute)
+  const [isPacedRunning, setIsPacedRunning] = useState(false);
+  const [isPacedPaused, setIsPacedPaused] = useState(false);
+  const [pacedQueue, setPacedQueue] = useState<Lead[]>([]);
+  const [pacedIndex, setPacedIndex] = useState(0);
+  const [pacedTotal, setPacedTotal] = useState(0);
+  const [pacedSentCount, setPacedSentCount] = useState(0);
+  const [secondsRemaining, setSecondsRemaining] = useState(60);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+  const [isDispatchingSingleId, setIsDispatchingSingleId] = useState<string | null>(null);
 
   // One-time automatic purge of previous unvalidated 140 leads & legacy dummy founder user entries
   useEffect(() => {
@@ -446,6 +461,171 @@ export function App() {
     }
   };
 
+  // Eligible Unsent Leads for Paced Dispatch (1 Email / Minute)
+  const eligibleUnsentLeads = leads.filter(l => {
+    const email = l.businessEmail || l.email;
+    return (
+      email && 
+      validateEmailSyntax(email) && 
+      l.outreachStatus !== 'sent' && 
+      l.outreachStatus !== 'replied' && 
+      l.outreachStatus !== 'suppressed'
+    );
+  });
+
+  const selectedLeads = leads.filter(l => {
+    const email = l.businessEmail || l.email;
+    return (
+      selectedLeadIds.includes(l.id) && 
+      email && 
+      validateEmailSyntax(email) && 
+      l.outreachStatus !== 'sent'
+    );
+  });
+
+  const currentSendingLead = pacedQueue[pacedIndex] || null;
+
+  // Activate Campaign helper from Paced Bar
+  const handleActivateCampaignFromBar = async () => {
+    if (!currentUser) return;
+    try {
+      await toggleCampaignStatus('ACTIVE', currentUser);
+      showNotification('Outreach campaign is now ACTIVE.');
+    } catch (e: any) {
+      alert(`Could not activate campaign: ${e.message}`);
+    }
+  };
+
+  // Start Paced Queue (1 Email / Minute)
+  const handleStartPacedQueue = async (targetLeads: Lead[]) => {
+    if (!currentUser) return;
+    if (campaign.status !== 'ACTIVE') {
+      alert('Outreach Campaign is currently PAUSED. Please activate it first.');
+      return;
+    }
+    const valid = targetLeads.filter(l => {
+      const email = l.businessEmail || l.email;
+      return email && validateEmailSyntax(email) && l.outreachStatus !== 'sent';
+    });
+    if (valid.length === 0) {
+      alert('No eligible unsent leads found with valid email addresses.');
+      return;
+    }
+
+    setPacedQueue(valid);
+    setPacedTotal(valid.length);
+    setPacedIndex(0);
+    setPacedSentCount(0);
+    setSecondsRemaining(60);
+    setIsPacedRunning(true);
+    setIsPacedPaused(false);
+
+    showNotification(`⚡ Starting 1-by-1 outreach for ${valid.length} leads. First email sending now...`);
+
+    // Dispatch the first email immediately
+    const firstLead = valid[0];
+    try {
+      const res = await dispatchLeadOutreach(firstLead, campaign, currentUser);
+      if (res.success) {
+        setPacedSentCount(1);
+        setPacedIndex(1);
+        showNotification(`✓ Dispatched 1st email to ${firstLead.businessName}! Next in 60s.`);
+      } else {
+        showNotification(`Note on ${firstLead.businessName}: ${res.error}`);
+        setPacedIndex(1);
+      }
+    } catch (e: any) {
+      console.warn('Paced dispatch err:', e);
+      setPacedIndex(1);
+    }
+  };
+
+  // Timer Effect for 1-minute interval between subsequent emails
+  useEffect(() => {
+    if (!isPacedRunning || isPacedPaused || !currentUser) return;
+
+    if (pacedIndex >= pacedTotal) {
+      setIsPacedRunning(false);
+      showNotification(`✓ All ${pacedSentCount} outreach email(s) sent successfully 1 by 1!`);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setSecondsRemaining(prev => {
+        if (prev <= 1) {
+          const nextLead = pacedQueue[pacedIndex];
+          if (nextLead && campaign.status === 'ACTIVE') {
+            dispatchLeadOutreach(nextLead, campaign, currentUser).then(res => {
+              if (res.success) {
+                setPacedSentCount(c => c + 1);
+                showNotification(`✓ 1-by-1 dispatched to ${nextLead.businessName}! Next in 60s.`);
+              } else {
+                showNotification(`Dispatch notice (${nextLead.businessName}): ${res.error}`);
+              }
+            }).catch(err => console.warn('Paced dispatch error:', err));
+          }
+          setPacedIndex(i => i + 1);
+          return 60; // Reset countdown for the next lead
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isPacedRunning, isPacedPaused, pacedIndex, pacedTotal, pacedQueue, campaign, currentUser]);
+
+  const handlePausePacedQueue = () => {
+    setIsPacedPaused(true);
+    showNotification('Paced outreach queue paused.');
+  };
+
+  const handleResumePacedQueue = () => {
+    setIsPacedPaused(false);
+    showNotification('Paced outreach queue resumed.');
+  };
+
+  const handleStopPacedQueue = () => {
+    setIsPacedRunning(false);
+    setIsPacedPaused(false);
+    setPacedQueue([]);
+    showNotification('Paced outreach queue stopped.');
+  };
+
+  const handleDispatchSingleLead = async (lead: Lead) => {
+    if (!currentUser) return;
+    if (campaign.status !== 'ACTIVE') {
+      alert('Outreach Campaign is currently PAUSED. Please activate it first in the Email Outreach tab.');
+      return;
+    }
+    setIsDispatchingSingleId(lead.id);
+    try {
+      const res = await dispatchLeadOutreach(lead, campaign, currentUser);
+      if (res.success) {
+        showNotification(`✓ Outreach email dispatched to ${lead.businessName}!`);
+      } else {
+        showNotification(`Notice: ${res.error}`);
+      }
+    } catch (e: any) {
+      showNotification(`Error: ${e.message}`);
+    } finally {
+      setIsDispatchingSingleId(null);
+    }
+  };
+
+  const handleToggleSelectLead = (leadId: string) => {
+    setSelectedLeadIds(prev => 
+      prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
+    );
+  };
+
+  const handleSelectAllLeads = (selected: boolean) => {
+    if (selected) {
+      setSelectedLeadIds(filteredLeads.map(l => l.id));
+    } else {
+      setSelectedLeadIds([]);
+    }
+  };
+
   const pendingFollowUpsCount = followUps.filter(t => t.status === 'pending').length;
   const newLeadsCount = leads.filter(l => l.status === 'new').length;
   const pendingRegistrationsCount = allUsers.filter(u => u.status === 'pending_activation').length;
@@ -583,22 +763,52 @@ export function App() {
               <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 text-xs">
                 No prospects match the filter "{currentSection}" or search query "{searchQuery}".
               </div>
-            ) : viewMode === 'board' ? (
-              <LeadBoard
-                leads={filteredLeads}
-                users={allUsers}
-                onSelectLead={(l) => setSelectedLead(l)}
-                onUpdateStatus={handleUpdateStatus}
-                onOpenContactModal={(l) => setContactingLead(l)}
-              />
             ) : (
-              <LeadListView
-                leads={filteredLeads}
-                users={allUsers}
-                onSelectLead={(l) => setSelectedLead(l)}
-                onUpdateStatus={handleUpdateStatus}
-                onOpenContactModal={(l) => setContactingLead(l)}
-              />
+              <>
+                {/* 1-by-1 Paced Outreach Bar */}
+                {currentUser && (currentUser.role === 'founder' || currentUser.role === 'admin') && (
+                  <PacedOutreachBar
+                    campaign={campaign}
+                    currentUser={currentUser}
+                    eligibleUnsentLeads={eligibleUnsentLeads}
+                    selectedLeads={selectedLeads}
+                    isPacedRunning={isPacedRunning}
+                    isPacedPaused={isPacedPaused}
+                    currentSendingLead={currentSendingLead}
+                    secondsRemaining={secondsRemaining}
+                    pacedSentCount={pacedSentCount}
+                    pacedTotal={pacedTotal}
+                    onStartPacedQueue={handleStartPacedQueue}
+                    onPausePacedQueue={handlePausePacedQueue}
+                    onResumePacedQueue={handleResumePacedQueue}
+                    onStopPacedQueue={handleStopPacedQueue}
+                    onActivateCampaign={handleActivateCampaignFromBar}
+                  />
+                )}
+
+                {viewMode === 'board' ? (
+                  <LeadBoard
+                    leads={filteredLeads}
+                    users={allUsers}
+                    onSelectLead={(l) => setSelectedLead(l)}
+                    onUpdateStatus={handleUpdateStatus}
+                    onOpenContactModal={(l) => setContactingLead(l)}
+                  />
+                ) : (
+                  <LeadListView
+                    leads={filteredLeads}
+                    users={allUsers}
+                    onSelectLead={(l) => setSelectedLead(l)}
+                    onUpdateStatus={handleUpdateStatus}
+                    onOpenContactModal={(l) => setContactingLead(l)}
+                    selectedLeadIds={selectedLeadIds}
+                    onToggleSelectLead={handleToggleSelectLead}
+                    onSelectAllLeads={handleSelectAllLeads}
+                    onDispatchSingleLead={handleDispatchSingleLead}
+                    isDispatchingSingleId={isDispatchingSingleId}
+                  />
+                )}
+              </>
             )}
           </>
         )}

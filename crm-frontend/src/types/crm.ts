@@ -107,6 +107,7 @@ export interface Lead {
   normalizedDomain: string;
   contactName?: string | null;
   businessEmail?: string | null;
+  email?: string | null;
   businessPhone?: string | null;
   city: string;
   country: string;

@@ -629,6 +629,57 @@ export const processAllQueuedJobs = async (
   return { processed, errors };
 };
 
+// 8d. Enqueue and deliver a lead immediately or as part of 1-by-1 paced outreach
+export const dispatchLeadOutreach = async (
+  lead: Lead,
+  campaign: OutreachCampaign,
+  performedBy: User
+): Promise<{ success: boolean; jobId?: string; error?: string }> => {
+  if (campaign.status !== 'ACTIVE') {
+    return { success: false, error: 'Campaign is PAUSED. Activate campaign first.' };
+  }
+
+  // Normalize email on lead if needed
+  if (!lead.businessEmail && lead.email) {
+    lead.businessEmail = lead.email;
+  }
+
+  // Check if lead already has a queued job
+  let existingJobId: string | null = null;
+  if (isFirebaseConfigured() && db) {
+    const q = query(
+      collection(db, 'emailJobs'),
+      where('leadId', '==', lead.id),
+      where('campaignId', '==', campaign.id)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      existingJobId = snap.docs[0].id;
+    }
+  } else {
+    const jobs = getStored<EmailJob[]>(STORAGE_KEYS.JOBS, []);
+    const match = jobs.find(j => j.leadId === lead.id && j.campaignId === campaign.id);
+    if (match) existingJobId = match.id;
+  }
+
+  let targetJobId = existingJobId;
+  if (!targetJobId) {
+    const enqueueRes = await queueOutreachForLead(lead, campaign, performedBy);
+    if (!enqueueRes.enqueued || !enqueueRes.jobId) {
+      return { success: false, error: enqueueRes.reason || 'Could not enqueue lead.' };
+    }
+    targetJobId = enqueueRes.jobId;
+  }
+
+  // Deliver the email
+  const deliveryRes = await processJobDelivery(targetJobId, campaign);
+  return {
+    success: deliveryRes.success,
+    jobId: targetJobId,
+    error: deliveryRes.error,
+  };
+};
+
 // 9. Process and Deliver Test Email (Restricted to Authorized Founders)
 export const sendTestEmail = async (
   campaign: OutreachCampaign,
