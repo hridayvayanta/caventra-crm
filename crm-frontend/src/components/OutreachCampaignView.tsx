@@ -364,6 +364,49 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
         </div>
       </div>
 
+      {/* Prominent Action Banner When Leads Are Queued */}
+      {queuedJobs.length > 0 && isFounder && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-600 text-white shadow-sm">
+              <Send className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-bold text-slate-900">
+                  {queuedJobs.length} Outreach Email{queuedJobs.length > 1 ? 's' : ''} Ready in Queue
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 uppercase font-mono">
+                  Pending Dispatch
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                Staged for {queuedJobs[0].businessName || queuedJobs[0].recipientEmail}
+                {queuedJobs.length > 1 ? ` and ${queuedJobs.length - 1} other(s)` : ''}. Click to send immediately or view individual rows.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleDispatchAllQueued}
+              disabled={isProcessingQueue}
+              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isProcessingQueue ? 'Dispatching...' : `Send Queued Email${queuedJobs.length > 1 ? 's' : ''} Now`}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('queue')}
+              className="px-3 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold transition-all shadow-sm"
+            >
+              Open Queue Table →
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
         <button
