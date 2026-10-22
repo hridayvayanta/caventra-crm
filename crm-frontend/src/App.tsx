@@ -116,13 +116,8 @@ export function App() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
   const [isDispatchingSingleId, setIsDispatchingSingleId] = useState<string | null>(null);
 
-  // One-time automatic purge of previous unvalidated 140 leads & legacy dummy founder user entries
+  // Clean legacy dummy founder user entries if needed
   useEffect(() => {
-    if (!localStorage.getItem('caventra_leads_purged_contact_filter_v2')) {
-      purgeAllLeads();
-      localStorage.setItem('caventra_leads_purged_contact_filter_v2', 'true');
-    }
-
     if (!localStorage.getItem('caventra_users_cleaned_v1')) {
       const stored = localStorage.getItem('caventra_users');
       if (stored) {

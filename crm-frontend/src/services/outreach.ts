@@ -364,6 +364,11 @@ export const queueOutreachForLead = async (
     return { enqueued: false, reason: 'Campaign is PAUSED. Delivery skipped.' };
   }
 
+  // Check 1b: Strict 1-Time Outreach Rule (Never re-email already sent leads)
+  if (lead.outreachStatus === 'sent' || lead.outreachSentAt) {
+    return { enqueued: false, reason: 'Lead has already received outreach and cannot be re-emailed.' };
+  }
+
   // Check 2: Valid email
   if (!lead.businessEmail || !validateEmailSyntax(lead.businessEmail)) {
     return { enqueued: false, reason: 'Missing or invalid recipient email address.' };

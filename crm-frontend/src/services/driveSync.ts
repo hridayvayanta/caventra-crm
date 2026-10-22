@@ -2,7 +2,7 @@ import { Lead, User, IngestionJob, ImportRecord } from '../types/crm';
 import { batchImportLeads } from './db';
 
 export const DEFAULT_DRIVE_WEB_APP_URL = 
-  'https://script.google.com/macros/s/AKfycbz1cJ3cDkyM8G6WGcaJKbaHgaV2WVHKf5YQSpck4QwSICUKX6ArhDhvD3pz7ziB8gHR-w/exec';
+  'https://script.google.com/macros/s/AKfycbxsUGci8s8exsbMvAew3Kc684s2c2S1-q0vL7EthpAUA80CVv8TDcL5b10NeSU-Ob8PHg/exec';
 
 const STORAGE_KEYS = {
   WEB_APP_URL: 'caventra_drive_webapp_url',
