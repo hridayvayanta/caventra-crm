@@ -255,6 +255,20 @@ function jsonResponse(data, status) {
 }
 
 /**
+ * Firestore Helper Bridges
+ */
+function getFirestoreDocument(collection, docId) {
+  if (typeof FirestoreClient !== 'undefined') return FirestoreClient.getDocument(collection, docId);
+  return null;
+}
+function saveFirestoreDocument(collection, docId, data) {
+  if (typeof FirestoreClient !== 'undefined') return FirestoreClient.createDocument(collection, docId, data);
+}
+function updateFirestoreDocument(collection, docId, data) {
+  if (typeof FirestoreClient !== 'undefined') return FirestoreClient.updateDocument(collection, docId, data);
+}
+
+/**
  * Handle real outreach email transmission via native GmailApp
  */
 function handleSendOutreachEmail(data) {
@@ -273,6 +287,4 @@ function handleSendOutreachEmail(data) {
   });
 
   return { success: true, to: to, sentAt: new Date().toISOString() };
-}
-  return output;
 }
