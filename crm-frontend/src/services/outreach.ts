@@ -439,6 +439,9 @@ export const queueOutreachForLead = async (
     });
     await batch.commit();
 
+    // Auto-deliver immediately if campaign is ACTIVE
+    processJobDelivery(jobId, campaign).catch(e => console.warn('Auto delivery error:', e));
+
     return { enqueued: true, jobId };
   }
 
@@ -467,7 +470,163 @@ export const queueOutreachForLead = async (
   camp.stats.queuedCount = (camp.stats.queuedCount || 0) + 1;
   setStored(STORAGE_KEYS.CAMPAIGN, camp);
 
+  // Auto-deliver immediately in local mode if campaign is ACTIVE
+  processJobDelivery(jobId, campaign).catch(e => console.warn('Auto delivery error:', e));
+
   return { enqueued: true, jobId };
+};
+
+// 8b. Process and Deliver a Queued Job (Live Dispatch)
+export const processJobDelivery = async (
+  jobId: string,
+  campaign: OutreachCampaign
+): Promise<{ success: boolean; error?: string }> => {
+  // 1. Re-check campaign kill switch immediately before dispatch
+  if (campaign.status !== 'ACTIVE') {
+    return { success: false, error: 'Campaign is PAUSED. Delivery aborted.' };
+  }
+
+  // 2. Fetch job record
+  let job: EmailJob | null = null;
+  if (isFirebaseConfigured() && db) {
+    const jobSnap = await getDoc(doc(db, 'emailJobs', jobId));
+    if (jobSnap.exists()) job = jobSnap.data() as EmailJob;
+  } else {
+    const jobs = getStored<EmailJob[]>(STORAGE_KEYS.JOBS, []);
+    job = jobs.find(j => j.id === jobId) || null;
+  }
+
+  if (!job || (job.status !== 'QUEUED' && job.status !== 'SENDING')) {
+    return { success: false, error: 'Job not found or not in QUEUED state.' };
+  }
+
+  // 3. Suppression check
+  const isSuppressed = await isEmailSuppressed(job.recipientEmail);
+  if (isSuppressed) {
+    if (isFirebaseConfigured() && db) {
+      await updateDoc(doc(db, 'emailJobs', jobId), { status: 'SUPPRESSED', errorDetails: 'Suppressed recipient.' });
+    }
+    return { success: false, error: 'Recipient is suppressed.' };
+  }
+
+  const now = new Date().toISOString();
+  const providerMessageId = `msg_out_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+  // 4. Send through connected Apps Script Webhook if configured
+  if (campaign.appsScriptUrl) {
+    try {
+      const optOutUrl = `https://caventraofficial.in/#optout?token=${job.optOutToken}&email=${encodeURIComponent(job.recipientEmail)}`;
+      const renderedBody = renderTemplate(campaign.body, {
+        businessName: job.businessName,
+        contactName: job.recipientName,
+      }, optOutUrl);
+
+      await fetch(campaign.appsScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'send_email',
+          to: job.recipientEmail,
+          subject: job.resolvedSubject || campaign.subject,
+          body: renderedBody,
+          fromName: campaign.senderName || 'CAVENTRA Team',
+        }),
+        mode: 'no-cors',
+      });
+    } catch (sendErr) {
+      console.warn('Apps Script outreach delivery notice:', sendErr);
+    }
+  }
+
+  // 5. Update Job and Lead Status to SENT
+  const event: EmailEvent = {
+    id: `evt_sent_${Date.now()}`,
+    jobId: job.id,
+    leadId: job.leadId,
+    campaignId: campaign.id,
+    recipientEmail: job.recipientEmail,
+    eventType: 'SENT',
+    timestamp: now,
+    providerMessageId,
+    details: `Outreach email delivered to ${job.recipientEmail}`,
+  };
+
+  if (isFirebaseConfigured() && db) {
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'emailJobs', jobId), {
+      status: 'SENT',
+      sentAt: now,
+      providerMessageId,
+      attempts: (job.attempts || 0) + 1,
+    });
+    batch.set(doc(db, 'emailEvents', event.id), event);
+    batch.update(doc(db, 'leads', job.leadId), {
+      outreachStatus: 'sent',
+      outreachSentAt: now,
+      updatedAt: now,
+    });
+    const campRef = doc(db, 'campaigns', campaign.id);
+    batch.update(campRef, {
+      'stats.sentCount': (campaign.stats?.sentCount || 0) + 1,
+      'stats.queuedCount': Math.max(0, (campaign.stats?.queuedCount || 1) - 1),
+      lastSendAt: now,
+      updatedAt: now,
+    });
+    await batch.commit();
+    return { success: true };
+  }
+
+  // Local storage update
+  const currentJobs = getStored<EmailJob[]>(STORAGE_KEYS.JOBS, []);
+  const updatedJobs = currentJobs.map(j => j.id === jobId ? {
+    ...j,
+    status: 'SENT' as const,
+    sentAt: now,
+    providerMessageId,
+    attempts: (j.attempts || 0) + 1,
+  } : j);
+  setStored(STORAGE_KEYS.JOBS, updatedJobs);
+
+  const currentEvents = getStored<EmailEvent[]>(STORAGE_KEYS.EVENTS, []);
+  setStored(STORAGE_KEYS.EVENTS, [event, ...currentEvents]);
+
+  const currentLeads = getStored<Lead[]>('caventra_leads', []);
+  const updatedLeads = currentLeads.map(l => l.id === job.leadId ? {
+    ...l,
+    outreachStatus: 'sent' as const,
+    outreachSentAt: now,
+    updatedAt: now,
+  } : l);
+  setStored('caventra_leads', updatedLeads);
+
+  const camp = getStored<OutreachCampaign>(STORAGE_KEYS.CAMPAIGN, campaign);
+  camp.stats.sentCount = (camp.stats.sentCount || 0) + 1;
+  camp.stats.queuedCount = Math.max(0, (camp.stats.queuedCount || 1) - 1);
+  camp.lastSendAt = now;
+  setStored(STORAGE_KEYS.CAMPAIGN, camp);
+
+  return { success: true };
+};
+
+// 8c. Process All Queued Jobs
+export const processAllQueuedJobs = async (
+  jobs: EmailJob[],
+  campaign: OutreachCampaign
+): Promise<{ processed: number; errors: number }> => {
+  const queued = jobs.filter(j => j.status === 'QUEUED');
+  let processed = 0;
+  let errors = 0;
+
+  for (const job of queued) {
+    const res = await processJobDelivery(job.id, campaign);
+    if (res.success) {
+      processed++;
+    } else {
+      errors++;
+    }
+  }
+
+  return { processed, errors };
 };
 
 // 9. Process and Deliver Test Email (Restricted to Authorized Founders)

@@ -13,7 +13,9 @@ import {
   sendTestEmail, 
   renderTemplate, 
   normalizeEmail, 
-  validateEmailSyntax 
+  validateEmailSyntax,
+  processJobDelivery,
+  processAllQueuedJobs
 } from '../services/outreach';
 import { 
   Mail, 
@@ -72,6 +74,10 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
   // Apps Script Webhook URL
   const [appsScriptUrl, setAppsScriptUrl] = useState(campaign.appsScriptUrl || '');
   const [isSavingUrl, setIsSavingUrl] = useState(false);
+
+  // Queue Dispatching State
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+  const [processingJobId, setProcessingJobId] = useState<string | null>(null);
 
   // Filter for Queue Table
   const [jobFilter, setJobFilter] = useState<'all' | 'QUEUED' | 'SENT' | 'FAILED' | 'SUPPRESSED'>('all');
@@ -144,6 +150,57 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
     } finally {
       setIsSendingTest(false);
     }
+  };
+
+  // Dispatch All Queued Jobs
+  const queuedJobs = jobs.filter(j => j.status === 'QUEUED');
+
+  const handleDispatchAllQueued = async () => {
+    if (queuedJobs.length === 0) return;
+    if (campaign.status !== 'ACTIVE') {
+      alert('Campaign is currently PAUSED. Please activate the campaign first or use "Open in Gmail" to send individual emails.');
+      return;
+    }
+    setIsProcessingQueue(true);
+    try {
+      const res = await processAllQueuedJobs(jobs, campaign);
+      onShowNotification(`Processed ${res.processed} queued outreach email(s).`);
+    } catch (err: any) {
+      onShowNotification(`Error sending queued emails: ${err.message}`);
+    } finally {
+      setIsProcessingQueue(false);
+    }
+  };
+
+  // Dispatch Single Job
+  const handleDispatchSingle = async (job: EmailJob) => {
+    if (campaign.status !== 'ACTIVE') {
+      alert('Campaign is currently PAUSED. Activate the campaign or open Gmail directly.');
+      return;
+    }
+    setProcessingJobId(job.id);
+    try {
+      const res = await processJobDelivery(job.id, campaign);
+      if (res.success) {
+        onShowNotification(`Outreach email dispatched to ${job.recipientEmail}!`);
+      } else {
+        onShowNotification(`Failed to dispatch: ${res.error}`);
+      }
+    } catch (err: any) {
+      onShowNotification(`Dispatch error: ${err.message}`);
+    } finally {
+      setProcessingJobId(null);
+    }
+  };
+
+  // Generate 1-Click Gmail Composer URL for any job
+  const getJobGmailUrl = (job: EmailJob) => {
+    const optOutUrl = `https://caventraofficial.in/#optout?token=${job.optOutToken}&email=${encodeURIComponent(job.recipientEmail)}`;
+    const renderedBody = renderTemplate(campaign.body, {
+      businessName: job.businessName,
+      contactName: job.recipientName || undefined,
+    }, optOutUrl);
+    return `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(job.recipientEmail)}&su=${encodeURIComponent(job.resolvedSubject || campaign.subject)}&body=${encodeURIComponent(renderedBody)}`;
   };
 
   // Filtered jobs
@@ -541,19 +598,33 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
               <p className="text-xs text-slate-500">All scheduled, sent, and audited delivery events.</p>
             </div>
 
-            {/* Filter buttons */}
-            <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
-              {(['all', 'QUEUED', 'SENT', 'FAILED', 'SUPPRESSED'] as const).map(f => (
+            <div className="flex items-center gap-2">
+              {queuedJobs.length > 0 && isFounder && (
                 <button
-                  key={f}
-                  onClick={() => setJobFilter(f)}
-                  className={`px-2.5 py-1 rounded text-xs font-semibold capitalize transition-all ${
-                    jobFilter === f ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  type="button"
+                  onClick={handleDispatchAllQueued}
+                  disabled={isProcessingQueue}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50"
                 >
-                  {f === 'all' ? 'All Jobs' : f.toLowerCase()}
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isProcessingQueue ? 'Sending...' : `Send Queued Emails (${queuedJobs.length})`}</span>
                 </button>
-              ))}
+              )}
+
+              {/* Filter buttons */}
+              <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200">
+                {(['all', 'QUEUED', 'SENT', 'FAILED', 'SUPPRESSED'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setJobFilter(f)}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold capitalize transition-all ${
+                      jobFilter === f ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {f === 'all' ? 'All Jobs' : f.toLowerCase()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -567,12 +638,13 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
                   <th className="py-2.5 px-4">Attempts</th>
                   <th className="py-2.5 px-4">Message ID</th>
                   <th className="py-2.5 px-4">Date</th>
+                  <th className="py-2.5 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredJobs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
+                    <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
                       No outreach jobs matching the filter.
                     </td>
                   </tr>
@@ -604,6 +676,39 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
                       </td>
                       <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
                         {job.sentAt ? new Date(job.sentAt).toLocaleString() : new Date(job.createdAt).toLocaleString()}
+                      </td>
+                      <td className="py-2.5 px-4 text-right">
+                        {job.status === 'QUEUED' ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleDispatchSingle(job)}
+                              disabled={processingJobId === job.id || campaign.status !== 'ACTIVE'}
+                              title={campaign.status !== 'ACTIVE' ? 'Activate campaign to dispatch automatically' : 'Send via automated dispatch'}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-semibold transition-all disabled:opacity-40"
+                            >
+                              <Send className="w-3 h-3" />
+                              <span>{processingJobId === job.id ? 'Sending...' : 'Send Now'}</span>
+                            </button>
+                            <a
+                              href={getJobGmailUrl(job)}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Open pre-filled Gmail composer"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-[11px] font-semibold transition-all"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>Gmail</span>
+                            </a>
+                          </div>
+                        ) : job.status === 'SENT' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Delivered</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400">—</span>
+                        )}
                       </td>
                     </tr>
                   ))
