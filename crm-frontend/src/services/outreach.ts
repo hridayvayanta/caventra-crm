@@ -33,8 +33,8 @@ export const DEFAULT_CAMPAIGN: OutreachCampaign = {
   id: 'default_cold_outreach',
   name: 'Cold Inbound & Lead Pipeline Outreach',
   status: 'PAUSED', // Non-negotiable requirement: Must default to PAUSED
-  senderEmail: 'hriday@caventraofficial.in',
-  senderName: 'CAVENTRA Outreach',
+  senderEmail: 'caventraofficial@gmail.com',
+  senderName: 'CAVENTRA Team',
   authorizedConnectionStatus: 'CONNECTED',
   subject: 'A quick idea for {{businessName}}',
   body: `Hi {{contactName}},
