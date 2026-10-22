@@ -52,20 +52,48 @@ const setStored = <T>(key: string, value: T): void => {
   }
 };
 
-// 1. Subscribe to Leads (Real-time listener)
+// 1. Subscribe to Leads (Real-time listener with Two-Way Cloud Sync)
 export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) => {
+  // Emit local cache immediately so UI is instantaneous
+  const localLeads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+  if (localLeads.length > 0) {
+    localLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    callback(localLeads);
+  }
+
   if (isFirebaseConfigured() && db) {
     const leadsRef = collection(db, 'leads');
     return onSnapshot(leadsRef, (snapshot) => {
-      const leads: Lead[] = [];
+      const cloudLeads: Lead[] = [];
       snapshot.forEach((docSnap) => {
-        leads.push(docSnap.data() as Lead);
+        cloudLeads.push(docSnap.data() as Lead);
       });
-      // Sort newest first
-      leads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-      callback(leads);
+      cloudLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      if (cloudLeads.length > 0) {
+        // Cloud has leads: cache them locally and render to all users across devices
+        setStored(STORAGE_KEYS.LEADS, cloudLeads);
+        callback(cloudLeads);
+      } else if (localLeads.length > 0 && db) {
+        // Cloud is empty but local browser has leads: replicate local leads to Cloud Firestore
+        const firestore = db;
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < localLeads.length; i += CHUNK_SIZE) {
+          const chunk = localLeads.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(firestore);
+          for (const l of chunk) {
+            batch.set(doc(firestore, 'leads', l.id), l);
+          }
+          batch.commit().catch(e => console.warn('Cloud replication notice:', e));
+        }
+        callback(localLeads);
+      } else {
+        callback([]);
+      }
     }, (error) => {
-      console.error('Firestore subscribeLeads error:', error);
+      console.warn('Firestore subscribeLeads error:', error);
+      const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+      callback(leads);
     });
   }
 
@@ -346,61 +374,14 @@ export const batchImportLeads = async (
   performedBy: User
 ): Promise<{ success: boolean; importedCount: number; duplicateCount: number; rejectedCount: number; error?: string }> => {
   try {
-    if (isFirebaseConfigured() && db) {
-      const batch = writeBatch(db);
-
-      for (const lead of validLeads) {
-        const leadRef = doc(db, 'leads', lead.id);
-        batch.set(leadRef, lead);
-
-        const actId = `act_imp_${lead.id}`;
-        const actRef = doc(db, 'activities', actId);
-        const activity: Activity = {
-          id: actId,
-          leadId: lead.id,
-          type: 'import',
-          title: 'Excel / CSV Import',
-          description: `Imported from file "${importRecord.fileName}" by ${performedBy.name}`,
-          performedBy: performedBy.name,
-          performedByEmail: performedBy.email,
-          timestamp: new Date().toISOString(),
-        };
-        batch.set(actRef, activity);
-      }
-
-      const historyRef = doc(db, 'import_history', importRecord.id);
-      batch.set(historyRef, importRecord);
-
-      await batch.commit();
-
-      // Enqueue outreach emails for valid imported leads IF campaign is ACTIVE
-      try {
-        const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
-        const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
-        if (campaign.status === 'ACTIVE') {
-          for (const lead of validLeads) {
-            if (lead.businessEmail) {
-              await queueOutreachForLead(lead, campaign, performedBy);
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Batch outreach enqueue bypassed:', e);
-      }
-
-      return {
-        success: true,
-        importedCount: validLeads.length,
-        duplicateCount: importRecord.duplicateCount,
-        rejectedCount: importRecord.rejectedCount,
-      };
-    }
-
-    // Local storage persistence
+    // 1. Immediately cache in local storage so this browser sees them instantaneously
     const currentLeads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
-    const currentActivities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
-    const currentHistory = getStored<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
+    const existingIds = new Set(currentLeads.map(l => l.id));
+    const toAdd = validLeads.filter(l => !existingIds.has(l.id));
+    const updatedLeads = [...toAdd, ...currentLeads];
+    setStored(STORAGE_KEYS.LEADS, updatedLeads);
 
+    const currentActivities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
     const newActivities: Activity[] = validLeads.map(lead => ({
       id: `act_imp_${lead.id}_${Date.now()}`,
       leadId: lead.id,
@@ -411,24 +392,38 @@ export const batchImportLeads = async (
       performedByEmail: performedBy.email,
       timestamp: new Date().toISOString(),
     }));
-
-    setStored(STORAGE_KEYS.LEADS, [...validLeads, ...currentLeads]);
     setStored(STORAGE_KEYS.ACTIVITIES, [...newActivities, ...currentActivities]);
+
+    const currentHistory = getStored<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
     setStored(STORAGE_KEYS.IMPORT_HISTORY, [importRecord, ...currentHistory]);
 
-    // Local storage batch outreach queuing check
-    try {
-      const storedCamp = localStorage.getItem('caventra_outreach_campaign');
-      const campaign = storedCamp ? JSON.parse(storedCamp) : DEFAULT_CAMPAIGN;
-      if (campaign.status === 'ACTIVE') {
-        for (const lead of validLeads) {
-          if (lead.businessEmail) {
-            await queueOutreachForLead(lead, campaign, performedBy);
+    // 2. Replicate to Cloud Firestore in safe chunks of 100 so ALL team members on any device see them
+    if (isFirebaseConfigured() && db) {
+      try {
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < validLeads.length; i += CHUNK_SIZE) {
+          const chunk = validLeads.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          for (const lead of chunk) {
+            batch.set(doc(db, 'leads', lead.id), lead);
+            const actRef = doc(db, 'activities', `act_imp_${lead.id}`);
+            batch.set(actRef, {
+              id: `act_imp_${lead.id}`,
+              leadId: lead.id,
+              type: 'import',
+              title: 'Excel / CSV Import',
+              description: `Imported from file "${importRecord.fileName}" by ${performedBy.name}`,
+              performedBy: performedBy.name,
+              performedByEmail: performedBy.email,
+              timestamp: new Date().toISOString(),
+            });
           }
+          await batch.commit();
         }
+        await setDoc(doc(db, 'import_history', importRecord.id), importRecord);
+      } catch (cloudErr) {
+        console.warn('Firestore cloud replication warning:', cloudErr);
       }
-    } catch (e) {
-      console.warn('Local batch outreach enqueue bypassed:', e);
     }
 
     return {

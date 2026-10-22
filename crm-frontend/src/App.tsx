@@ -210,6 +210,13 @@ export function App() {
     };
   }, [isAuthorized]);
 
+  // Auto-sync from Google Drive for any new user or device if leads are empty
+  useEffect(() => {
+    if (isAuthorized && currentUser && leads.length === 0 && !isSyncingDrive) {
+      syncLeadsFromGoogleDrive(currentUser, []).catch(e => console.warn('Auto drive sync notice:', e));
+    }
+  }, [isAuthorized, leads.length]);
+
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
