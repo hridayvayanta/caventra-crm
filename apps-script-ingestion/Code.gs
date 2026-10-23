@@ -387,6 +387,54 @@ function mapHeaders(headers) {
   return map;
 }
 
+// --- WEBHOOK POST API (For Automated Email Outreach Dispatch via Gmail) ---
+function doPost(e) {
+  try {
+    var body = {};
+    if (e && e.postData && e.postData.contents) {
+      body = JSON.parse(e.postData.contents);
+    }
+
+    var action = body.action || '';
+
+    if (action === 'send_email' || action === 'send_outreach') {
+      return jsonResponse(handleSendOutreachEmail(body));
+    } else {
+      return jsonResponse({ success: false, error: 'Unknown action specified: ' + action }, 400);
+    }
+  } catch (err) {
+    Logger.log('doPost error: ' + err.toString());
+    return jsonResponse({ success: false, error: err.message || 'Server error' }, 500);
+  }
+}
+
+function jsonResponse(data, status) {
+  var output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
+}
+
+function handleSendOutreachEmail(data) {
+  var to = (data.to || data.recipientEmail || '').trim().toLowerCase();
+  var subject = (data.subject || '').trim();
+  var body = data.body || data.text || '';
+  var htmlBody = data.html || data.htmlBody || '';
+  var fromName = data.fromName || 'CAVENTRA Team';
+
+  if (!to || !subject || (!body && !htmlBody)) {
+    throw new Error('Missing required fields: to, subject, or body');
+  }
+
+  var options = { name: fromName };
+  if (htmlBody) {
+    options.htmlBody = htmlBody;
+  }
+
+  GmailApp.sendEmail(to, subject, body || subject, options);
+  Logger.log('✓ Outreach email successfully dispatched to: ' + to);
+  return { success: true, to: to, sentAt: new Date().toISOString() };
+}
+
 // --- OPTIONAL WEB API (Visit URL in browser to view extracted leads JSON) ---
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || '';
