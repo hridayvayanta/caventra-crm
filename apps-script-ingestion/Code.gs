@@ -41,27 +41,57 @@ function runScheduledIngestion(isWebInvocation) {
   var allExtractedLeads = [];
   var fileCount = 0;
 
+  // 1. Collect all valid spreadsheet workbooks
+  var fileList = [];
   while (files.hasNext()) {
     var file = files.next();
     var fileName = file.getName();
     // Skip cached converted sheets
     if (fileName.indexOf('[Converted]') === 0) continue;
 
-    var leads = parseSpreadsheetFile(file, folder);
+    var lowerName = fileName.toLowerCase();
+    var isSheet = (file.getMimeType() === MimeType.GOOGLE_SHEETS);
+    var isExcel = (
+      lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls') || lowerName.endsWith('.csv') ||
+      file.getMimeType() === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      file.getMimeType() === 'application/vnd.ms-excel'
+    );
+
+    if (isSheet || isExcel) {
+      fileList.push(file);
+    }
+  }
+
+  // 2. Sort files DESCENDING by last updated date (NEWEST files processed first!)
+  fileList.sort(function(a, b) {
+    return b.getLastUpdated().getTime() - a.getLastUpdated().getTime();
+  });
+
+  Logger.log('Total spreadsheet workbooks found: ' + fileList.length);
+
+  // 3. To guarantee instant web response without timeout, process the most recent files
+  // (e.g. up to 15 newest workbooks per sync; repeat sync grabs any additional)
+  var maxToProcess = isWebInvocation ? Math.min(fileList.length, 15) : fileList.length;
+
+  for (var i = 0; i < maxToProcess; i++) {
+    var f = fileList[i];
+    var leads = parseSpreadsheetFile(f, folder);
     if (leads && leads.length > 0) {
       allExtractedLeads = allExtractedLeads.concat(leads);
       fileCount++;
-      Logger.log('✓ Extracted ' + leads.length + ' validated leads from: ' + fileName);
+      Logger.log('✓ (' + (i + 1) + '/' + maxToProcess + ') Extracted ' + leads.length + ' leads from: ' + f.getName());
     }
   }
 
   Logger.log('=== TOTAL VALIDATED LEADS EXTRACTED: ' + allExtractedLeads.length + ' FROM ' + fileCount + ' WORKBOOKS ===');
-  
-  if (!isWebInvocation && CONFIG.FIRESTORE_PROJECT_ID && CONFIG.FIRESTORE_PROJECT_ID !== 'YOUR_FIREBASE_PROJECT_ID') {
-    syncLeadsToFirestore(allExtractedLeads);
-  }
 
-  return { success: true, filesFound: fileCount, totalLeads: allExtractedLeads.length, leads: allExtractedLeads };
+  return { 
+    success: true, 
+    filesFound: fileCount, 
+    totalFiles: fileList.length, 
+    totalLeads: allExtractedLeads.length, 
+    leads: allExtractedLeads 
+  };
 }
 
 // --- EXCEL & SPREADSHEET PARSER (Reads ALL Tabs / Sheets in Every Workbook) ---
