@@ -13,9 +13,10 @@ var CONFIG = {
   FIRESTORE_PROJECT_ID: 'caventra-crm'
 };
 
-// --- TEST FUNCTION: Run this to verify folder connection ---
+// --- TEST FUNCTION: Run this in Apps Script Editor to see EVERY file in your Drive folder ---
 function testDriveFolderAccess() {
-  Logger.log('Testing access to folder: ' + CONFIG.INBOX_FOLDER_ID);
+  Logger.log('=== AUDITING GOOGLE DRIVE INBOX FOLDER ===');
+  Logger.log('Folder ID: ' + CONFIG.INBOX_FOLDER_ID);
   try {
     var folder = DriveApp.getFolderById(CONFIG.INBOX_FOLDER_ID);
     Logger.log('✓ SUCCESS: Connected to folder "' + folder.getName() + '"');
@@ -24,11 +25,11 @@ function testDriveFolderAccess() {
     while (files.hasNext()) {
       var f = files.next();
       count++;
-      Logger.log('File ' + count + ': ' + f.getName() + ' (' + f.getMimeType() + ')');
+      Logger.log('File ' + count + ': "' + f.getName() + '" | Type: ' + f.getMimeType() + ' | Size: ' + (f.getSize() / 1024).toFixed(1) + ' KB');
     }
-    Logger.log('Total files found: ' + count);
+    Logger.log('=== TOTAL FILES FOUND IN DRIVE: ' + count + ' ===');
   } catch (e) {
-    Logger.log('❌ FAILED: ' + e.message);
+    Logger.log('❌ FAILED TO ACCESS FOLDER: ' + e.message);
   }
 }
 
@@ -43,6 +44,7 @@ function runScheduledIngestion(isWebInvocation) {
   while (files.hasNext()) {
     var file = files.next();
     var fileName = file.getName();
+    // Skip cached converted sheets
     if (fileName.indexOf('[Converted]') === 0) continue;
 
     var leads = parseSpreadsheetFile(file, folder);
@@ -53,10 +55,8 @@ function runScheduledIngestion(isWebInvocation) {
     }
   }
 
-  Logger.log('=== TOTAL VALIDATED LEADS EXTRACTED: ' + allExtractedLeads.length + ' ===');
+  Logger.log('=== TOTAL VALIDATED LEADS EXTRACTED: ' + allExtractedLeads.length + ' FROM ' + fileCount + ' WORKBOOKS ===');
   
-  // NOTE: For Web App API invocations (from CRM frontend), skip slow sequential Firestore HTTP calls.
-  // The CRM frontend handles atomic, batch-written Firestore synchronization directly via SDK!
   if (!isWebInvocation && CONFIG.FIRESTORE_PROJECT_ID && CONFIG.FIRESTORE_PROJECT_ID !== 'YOUR_FIREBASE_PROJECT_ID') {
     syncLeadsToFirestore(allExtractedLeads);
   }
@@ -64,7 +64,7 @@ function runScheduledIngestion(isWebInvocation) {
   return { success: true, filesFound: fileCount, totalLeads: allExtractedLeads.length, leads: allExtractedLeads };
 }
 
-// --- EXCEL & SPREADSHEET PARSER (With Smart Header-Row Auto-Detection & Persistent Conversion Cache) ---
+// --- EXCEL & SPREADSHEET PARSER (Reads ALL Tabs / Sheets in Every Workbook) ---
 function parseSpreadsheetFile(file, folder) {
   var fileName = file.getName();
   var mimeType = file.getMimeType();
@@ -87,14 +87,12 @@ function parseSpreadsheetFile(file, folder) {
     if (isSheet) {
       spreadsheet = SpreadsheetApp.open(file);
     } else {
-      // High-speed caching: check if a converted Google Sheet already exists
       var convertedTitle = '[Converted] ' + fileName;
       var convertedFile = null;
       if (folder) {
         var matches = folder.getFilesByName(convertedTitle);
         if (matches.hasNext()) {
           var existingSheet = matches.next();
-          // If the original Excel file has not been modified since conversion, reuse it (0.1s!)
           if (existingSheet.getLastUpdated() >= file.getLastUpdated()) {
             convertedFile = existingSheet;
           } else {
@@ -106,7 +104,6 @@ function parseSpreadsheetFile(file, folder) {
       if (convertedFile) {
         spreadsheet = SpreadsheetApp.openById(convertedFile.getId());
       } else {
-        // Auto-convert Excel (.xlsx) / CSV to cached Google Sheet using Drive API
         var blob = file.getBlob();
         var insertConfig = { title: convertedTitle, mimeType: MimeType.GOOGLE_SHEETS };
         if (folder) {
@@ -119,26 +116,32 @@ function parseSpreadsheetFile(file, folder) {
 
     var sheets = spreadsheet.getSheets();
     if (!sheets || sheets.length === 0) return [];
-    var data = sheets[0].getDataRange().getValues();
-    if (!data || data.length < 2) return [];
-
-    // 1. Intelligent Header-Row Auto-Detection (skips titles/banners at row 0, 1, etc.)
-    var headerRowIdx = findHeaderRowIndex(data);
-    var headers = data[headerRowIdx];
-    var colMap = mapHeaders(headers);
 
     var extractedLeads = [];
 
-    // 2. Extract valid business leads starting AFTER the detected header row
-    for (var r = headerRowIdx + 1; r < data.length; r++) {
-      var row = data[r];
-      var lead = smartExtractLeadFromRow(row, colMap, fileName);
-      if (lead) {
-        extractedLeads.push(lead);
+    // Parse EVERY sheet / tab in the workbook (never skip tab 2, 3, etc.)
+    for (var s = 0; s < sheets.length; s++) {
+      var currentSheet = sheets[s];
+      var sheetName = currentSheet.getName();
+      var data = currentSheet.getDataRange().getValues();
+      if (!data || data.length < 2) continue;
+
+      var headerRowIdx = findHeaderRowIndex(data);
+      var headers = data[headerRowIdx];
+      var colMap = mapHeaders(headers);
+
+      var sourceLabel = fileName + (sheets.length > 1 ? ' (' + sheetName + ')' : '');
+
+      for (var r = headerRowIdx + 1; r < data.length; r++) {
+        var row = data[r];
+        var lead = smartExtractLeadFromRow(row, colMap, sourceLabel);
+        if (lead) {
+          extractedLeads.push(lead);
+        }
       }
     }
 
-    Logger.log('File "' + fileName + '": Found ' + extractedLeads.length + ' valid leads (Header detected at line ' + (headerRowIdx + 1) + ')');
+    Logger.log('File "' + fileName + '": Found ' + extractedLeads.length + ' leads across ' + sheets.length + ' sheet(s)');
     return extractedLeads;
   } catch (err) {
     Logger.log('❌ Error parsing ' + fileName + ': ' + err.message);
@@ -263,12 +266,14 @@ function smartExtractLeadFromRow(row, colMap, fileName) {
     return null;
   }
 
-  // Strict Validation: Must have at least one contact channel (email, phone, or both)
+  // Validation: Must have at least one identifier (email, phone, website, or contact name)
   var hasEmail = Boolean(email && email.indexOf('@') !== -1 && email.indexOf('.') !== -1);
   var hasPhone = Boolean(cleanPhone.replace(/[^\d]/g, '').length >= 7);
+  var hasWebsite = Boolean(website && website.length >= 3);
+  var hasContact = Boolean(contact && contact.length >= 2);
 
-  if (!hasEmail && !hasPhone) {
-    return null; // Skip leads without contact details
+  if (!hasEmail && !hasPhone && !hasWebsite && !hasContact) {
+    return null; // Skip truly blank or useless rows
   }
 
   return {

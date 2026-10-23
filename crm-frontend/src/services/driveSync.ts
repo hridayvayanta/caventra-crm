@@ -95,18 +95,19 @@ export const syncLeadsFromGoogleDrive = async (
       const rawPhone = String(raw.phone || raw.businessPhone || '').trim();
       const cleanPhone = normalizePhone(rawPhone);
 
-      // Strict Validation: Company name is mandatory AND must have at least one contact channel (email, phone, or both)
-      const hasEmail = Boolean(email && email.includes('@') && email.includes('.'));
-      const hasPhone = Boolean(cleanPhone && cleanPhone.length >= 7);
-
-      if (!hasEmail && !hasPhone) {
-        rejectedCount++;
-        continue;
-      }
-
       const website = String(raw.website || '').trim();
       const normDomain = normalizeDomain(website);
       const normName = normalizeBusinessName(company);
+
+      // Validation: Must have at least one communication channel or digital domain
+      const hasEmail = Boolean(email && email.includes('@') && email.includes('.'));
+      const hasPhone = Boolean(cleanPhone && cleanPhone.length >= 7);
+      const hasDomain = Boolean(normDomain && normDomain.length >= 3);
+
+      if (!hasEmail && !hasPhone && !hasDomain) {
+        rejectedCount++;
+        continue;
+      }
 
       // Check duplicates across all dimensions
       const isDomainDup = Boolean(normDomain && existingDomains.has(normDomain));
