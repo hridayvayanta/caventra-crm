@@ -13,6 +13,13 @@ var CONFIG = {
   FIRESTORE_PROJECT_ID: 'caventra-crm'
 };
 
+// --- 1-CLICK GMAIL AUTHORIZATION TEST (Run this once to authorize Gmail sending) ---
+function testSendEmail() {
+  var myEmail = Session.getActiveUser().getEmail() || 'hridayvayanta7@gmail.com';
+  GmailApp.sendEmail(myEmail, 'CAVENTRA Outreach System Connected', 'Your Gmail outreach integration is successfully authorized and working perfectly!');
+  Logger.log('✓ Success: Test email sent to ' + myEmail);
+}
+
 // --- TEST FUNCTION: Run this in Apps Script Editor to see EVERY file in your Drive folder ---
 function testDriveFolderAccess() {
   Logger.log('=== AUDITING GOOGLE DRIVE INBOX FOLDER ===');
