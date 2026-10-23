@@ -50,7 +50,7 @@ function doGet(e) {
 
     // Default GET: Fetch leads from connected Google Drive Folder
     if (typeof runScheduledIngestion === 'function') {
-      var result = runScheduledIngestion();
+      var result = runScheduledIngestion(true);
       return jsonResponse(result);
     }
   } catch (err) {

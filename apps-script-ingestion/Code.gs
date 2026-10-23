@@ -33,35 +33,39 @@ function testDriveFolderAccess() {
 }
 
 // --- MAIN INGESTION FUNCTION ---
-function runScheduledIngestion() {
+function runScheduledIngestion(isWebInvocation) {
   Logger.log('=== CAVENTRA LEAD INGESTION RUN STARTED ===');
   var folder = DriveApp.getFolderById(CONFIG.INBOX_FOLDER_ID);
   var files = folder.getFiles();
   var allExtractedLeads = [];
+  var fileCount = 0;
 
   while (files.hasNext()) {
     var file = files.next();
     var fileName = file.getName();
     if (fileName.indexOf('[Converted]') === 0) continue;
 
-    var leads = parseSpreadsheetFile(file);
+    var leads = parseSpreadsheetFile(file, folder);
     if (leads && leads.length > 0) {
       allExtractedLeads = allExtractedLeads.concat(leads);
+      fileCount++;
       Logger.log('✓ Extracted ' + leads.length + ' validated leads from: ' + fileName);
     }
   }
 
   Logger.log('=== TOTAL VALIDATED LEADS EXTRACTED: ' + allExtractedLeads.length + ' ===');
   
-  if (CONFIG.FIRESTORE_PROJECT_ID && CONFIG.FIRESTORE_PROJECT_ID !== 'YOUR_FIREBASE_PROJECT_ID') {
+  // NOTE: For Web App API invocations (from CRM frontend), skip slow sequential Firestore HTTP calls.
+  // The CRM frontend handles atomic, batch-written Firestore synchronization directly via SDK!
+  if (!isWebInvocation && CONFIG.FIRESTORE_PROJECT_ID && CONFIG.FIRESTORE_PROJECT_ID !== 'YOUR_FIREBASE_PROJECT_ID') {
     syncLeadsToFirestore(allExtractedLeads);
   }
 
-  return { success: true, totalLeads: allExtractedLeads.length, leads: allExtractedLeads };
+  return { success: true, filesFound: fileCount, totalLeads: allExtractedLeads.length, leads: allExtractedLeads };
 }
 
-// --- EXCEL & SPREADSHEET PARSER (With Smart Header-Row Auto-Detection) ---
-function parseSpreadsheetFile(file) {
+// --- EXCEL & SPREADSHEET PARSER (With Smart Header-Row Auto-Detection & Persistent Conversion Cache) ---
+function parseSpreadsheetFile(file, folder) {
   var fileName = file.getName();
   var mimeType = file.getMimeType();
   var lowerName = fileName.toLowerCase();
@@ -78,21 +82,39 @@ function parseSpreadsheetFile(file) {
   if (!isSheet && !isExcel && !isCsv) return [];
 
   var spreadsheet = null;
-  var tempConvertedId = null;
 
   try {
     if (isSheet) {
       spreadsheet = SpreadsheetApp.open(file);
     } else {
-      // Auto-convert Excel (.xlsx) / CSV to temporary Google Sheet using Drive API
-      var blob = file.getBlob();
-      var tempSheet = Drive.Files.insert(
-        { title: '[Converted] ' + fileName, mimeType: MimeType.GOOGLE_SHEETS },
-        blob,
-        { convert: true }
-      );
-      tempConvertedId = tempSheet.id;
-      spreadsheet = SpreadsheetApp.openById(tempConvertedId);
+      // High-speed caching: check if a converted Google Sheet already exists
+      var convertedTitle = '[Converted] ' + fileName;
+      var convertedFile = null;
+      if (folder) {
+        var matches = folder.getFilesByName(convertedTitle);
+        if (matches.hasNext()) {
+          var existingSheet = matches.next();
+          // If the original Excel file has not been modified since conversion, reuse it (0.1s!)
+          if (existingSheet.getLastUpdated() >= file.getLastUpdated()) {
+            convertedFile = existingSheet;
+          } else {
+            try { existingSheet.setTrashed(true); } catch (e) {}
+          }
+        }
+      }
+
+      if (convertedFile) {
+        spreadsheet = SpreadsheetApp.openById(convertedFile.getId());
+      } else {
+        // Auto-convert Excel (.xlsx) / CSV to cached Google Sheet using Drive API
+        var blob = file.getBlob();
+        var insertConfig = { title: convertedTitle, mimeType: MimeType.GOOGLE_SHEETS };
+        if (folder) {
+          insertConfig.parents = [{ id: folder.getId() }];
+        }
+        var tempSheet = Drive.Files.insert(insertConfig, blob, { convert: true });
+        spreadsheet = SpreadsheetApp.openById(tempSheet.id);
+      }
     }
 
     var sheets = spreadsheet.getSheets();
@@ -121,10 +143,6 @@ function parseSpreadsheetFile(file) {
   } catch (err) {
     Logger.log('❌ Error parsing ' + fileName + ': ' + err.message);
     return [];
-  } finally {
-    if (tempConvertedId) {
-      try { DriveApp.getFileById(tempConvertedId).setTrashed(true); } catch (e) {}
-    }
   }
 }
 
@@ -336,7 +354,16 @@ function mapHeaders(headers) {
 
 // --- OPTIONAL WEB API (Visit URL in browser to view extracted leads JSON) ---
 function doGet(e) {
-  var result = runScheduledIngestion();
+  var action = (e && e.parameter && e.parameter.action) || '';
+  if (action === 'send_email' || action === 'send_outreach') {
+    return ContentService.createTextOutput(JSON.stringify({ 
+      success: false, 
+      error: 'Method Not Allowed: Email dispatch requires authenticated POST request' 
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Fast Lead Ingestion endpoint (isWebInvocation = true skips slow sequential Firestore HTTP calls)
+  var result = runScheduledIngestion(true);
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
 }
 

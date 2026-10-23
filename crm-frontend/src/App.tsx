@@ -469,10 +469,15 @@ export function App() {
 
   const handleSyncDrive = async () => {
     setIsSyncingDrive(true);
+    showNotification('Checking Google Drive folder for latest workbooks...');
     try {
       const res = await syncLeadsFromGoogleDrive(currentUser, leads);
       if (res.success) {
-        showNotification(`✓ Synced ${res.importedCount} leads from Google Drive! (${res.duplicateCount} duplicates skipped, ${res.rejectedCount} rejected)`);
+        if (res.importedCount > 0) {
+          showNotification(`✓ Synced ${res.importedCount} new leads from Google Drive! (${res.duplicateCount} duplicates skipped)`);
+        } else {
+          showNotification(`✓ Google Drive sync complete. All leads up to date (${res.duplicateCount || 0} existing leads verified).`);
+        }
       } else {
         alert(res.error || 'Failed to sync from Google Drive.');
       }
