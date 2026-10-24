@@ -42,6 +42,8 @@ interface NavbarProps {
   newLeadsCount: number;
   pendingCount?: number;
   onlyPhoneCount?: number;
+  indianLeadsCount?: number;
+  internationalLeadsCount?: number;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -64,6 +66,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   newLeadsCount,
   pendingCount = 0,
   onlyPhoneCount = 0,
+  indianLeadsCount = 0,
+  internationalLeadsCount = 0,
 }) => {
   const isFounder = currentUser.role === 'founder' || currentUser.role === 'admin';
 
@@ -252,6 +256,52 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             All Leads
           </button>
+
+          {/* Dedicated Indian Leads Section (Requirement 2) */}
+          <button
+            onClick={() => setCurrentSection('indian_leads')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'indian_leads'
+                ? 'bg-amber-600 text-white shadow-sm font-bold border border-amber-700'
+                : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 font-semibold'
+            }`}
+            title="Leads with verified Indian phone numbers (+91)"
+          >
+            <span>🇮🇳 Indian Leads</span>
+            {indianLeadsCount > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
+                currentSection === 'indian_leads'
+                  ? 'bg-amber-800 text-white'
+                  : 'bg-amber-200 text-amber-900'
+              }`}>
+                {indianLeadsCount}
+              </span>
+            )}
+          </button>
+
+          {/* Dedicated International Leads Section (Requirement 3) */}
+          <button
+            onClick={() => setCurrentSection('international_leads')}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              currentSection === 'international_leads'
+                ? 'bg-blue-600 text-white shadow-sm font-bold border border-blue-700'
+                : 'text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-300 font-semibold'
+            }`}
+            title="Leads with verified international calling codes"
+          >
+            <span>🌐 International Leads</span>
+            {internationalLeadsCount > 0 && (
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
+                currentSection === 'international_leads'
+                  ? 'bg-blue-800 text-white'
+                  : 'bg-blue-200 text-blue-900'
+              }`}>
+                {internationalLeadsCount}
+              </span>
+            )}
+          </button>
+
+          <div className="h-4 w-px bg-slate-300 mx-0.5"></div>
 
           <button
             onClick={() => setCurrentSection('new')}

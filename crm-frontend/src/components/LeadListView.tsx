@@ -1,6 +1,7 @@
 import React from 'react';
 import { Lead, LeadStatus, User } from '../types/crm';
-import { ExternalLink, Phone, Mail, ChevronRight, CheckCircle2, Calendar, Clock } from 'lucide-react';
+import { getCountryFlag } from '../services/leadClassifier';
+import { ExternalLink, Phone, Mail, ChevronRight, CheckCircle2, Calendar, Clock, AlertTriangle } from 'lucide-react';
 
 interface LeadListViewProps {
   leads: Lead[];
@@ -68,9 +69,41 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
                     />
                   )}
                   <div className="min-w-0">
-                    <h4 className="font-bold text-slate-900 text-sm leading-tight truncate">
-                      {lead.businessName}
-                    </h4>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h4 className="font-bold text-slate-900 text-sm leading-tight truncate">
+                        {lead.businessName}
+                      </h4>
+                      {lead.phoneCountry && lead.phoneCountry !== 'Unknown' && (
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono border ${
+                          lead.phoneCountryCode === 'IN' || lead.phoneCountry === 'India'
+                            ? 'bg-amber-50 text-amber-900 border-amber-200'
+                            : 'bg-blue-50 text-blue-900 border-blue-200'
+                        }`}>
+                          <span>{getCountryFlag(lead.phoneCountryCode)}</span>
+                          <span>{lead.phoneCountry}</span>
+                        </span>
+                      )}
+                      {lead.contactType === 'both' && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-blue-50 text-blue-700 border border-blue-200">
+                          Both
+                        </span>
+                      )}
+                      {lead.contactType === 'phone_only' && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Phone Only
+                        </span>
+                      )}
+                      {lead.contactType === 'email_only' && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Email Only
+                        </span>
+                      )}
+                      {lead.contactType === 'missing' && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-rose-50 text-rose-700 border border-rose-200">
+                          Missing Info
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono mt-0.5">
                       <span>{lead.city}, {lead.country}</span>
                       {lead.normalizedDomain && !lead.normalizedDomain.includes('unknown') && !lead.normalizedDomain.endsWith('.local') && (
@@ -232,11 +265,43 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
 
                   {/* Location & Direct Contact Info */}
                   <td className="py-3.5 px-4 text-slate-600">
-                    <div className="font-medium text-slate-800">{lead.city}, {lead.country}</div>
-                    <div className="flex flex-col gap-0.5 mt-0.5">
-                      {lead.contactName && (
-                        <div className="text-[11px] text-slate-400">{lead.contactName}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium text-slate-800">{lead.city}, {lead.country}</span>
+                      {lead.phoneCountry && lead.phoneCountry !== 'Unknown' && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono border ${
+                          lead.phoneCountryCode === 'IN' || lead.phoneCountry === 'India'
+                            ? 'bg-amber-50 text-amber-900 border-amber-200'
+                            : 'bg-blue-50 text-blue-900 border-blue-200'
+                        }`} title={`Phone Country: ${lead.phoneCountry}`}>
+                          <span>{getCountryFlag(lead.phoneCountryCode)}</span>
+                          <span>{lead.phoneCountry}</span>
+                        </span>
                       )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {lead.contactType === 'both' ? (
+                        <span className="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-blue-50 text-blue-700 border border-blue-200">
+                          Phone & Email
+                        </span>
+                      ) : lead.contactType === 'phone_only' ? (
+                        <span className="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          Phone Only
+                        </span>
+                      ) : lead.contactType === 'email_only' ? (
+                        <span className="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Email Only
+                        </span>
+                      ) : lead.contactType === 'missing' ? (
+                        <span className="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-rose-50 text-rose-700 border border-rose-200">
+                          Missing Info
+                        </span>
+                      ) : null}
+
+                      {lead.contactName && (
+                        <span className="text-[11px] text-slate-400">• {lead.contactName}</span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-0.5 mt-1">
                       {lead.businessPhone && (
                         <a
                           href={`tel:${lead.businessPhone}`}
@@ -245,7 +310,7 @@ export const LeadListView: React.FC<LeadListViewProps> = ({
                           title={`Call ${lead.businessPhone}`}
                         >
                           <Phone className="w-2.5 h-2.5" />
-                          <span>{lead.businessPhone}</span>
+                          <span>{lead.normalizedPhone || lead.businessPhone}</span>
                         </a>
                       )}
                       {lead.businessEmail && (

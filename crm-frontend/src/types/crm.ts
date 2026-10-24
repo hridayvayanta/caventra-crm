@@ -8,6 +8,8 @@ export type LeadStatus =
 
 export type LeadSection = 
   | 'all' 
+  | 'indian_leads'
+  | 'international_leads'
   | 'new' 
   | 'to_contact' 
   | 'only_phone_numbers'
@@ -20,6 +22,18 @@ export type LeadSection =
   | 'drive_import_status'
   | 'pending_registrations'
   | 'email_outreach';
+
+export type ContactType = 'phone_only' | 'email_only' | 'both' | 'missing';
+export type CountryClassificationStatus = 'verified' | 'inferred' | 'unknown' | 'needs_review';
+
+export type ContactMethodFilter = 
+  | 'all'
+  | 'phone'
+  | 'email'
+  | 'phone_only'
+  | 'email_only'
+  | 'both'
+  | 'missing';
 
 export type LeadPriority = 'normal' | 'high' | 'urgent';
 export type UserRole = 'founder' | 'admin' | 'employee';
@@ -130,6 +144,18 @@ export interface Lead {
   outreachStatus?: OutreachStatus;
   outreachJobId?: string;
   outreachSentAt?: string;
+
+  // Smart Contact & Country Classification Fields
+  normalizedPhone?: string;
+  normalizedEmail?: string;
+  hasValidPhone?: boolean;
+  hasValidEmail?: boolean;
+  contactType?: ContactType;
+  phoneCountryCode?: string; // 2-letter ISO, e.g. 'IN', 'US', 'AE'
+  phoneCountry?: string; // Proper name, e.g. 'India', 'United States'
+  callingCode?: string; // International calling prefix e.g. '+91', '+1', '+971'
+  countryClassificationStatus?: CountryClassificationStatus;
+
   createdAt: string;
   updatedAt: string;
 }

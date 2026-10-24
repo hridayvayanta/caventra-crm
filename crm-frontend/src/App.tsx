@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Lead, 
   LeadStatus, 
   LeadSection, 
+  ContactMethodFilter,
   User, 
   Activity, 
   FollowUpTask, 
@@ -29,8 +30,15 @@ import {
   recordContactCompletion, 
   completeFollowUpTask,
   checkIsDuplicateLead,
-  normalizeDomain
+  normalizeDomain,
+  backfillLeadClassification
 } from './services/db';
+import { 
+  filterLeads, 
+  getAvailableCountries, 
+  calculateLeadMetrics 
+} from './services/leadClassifier';
+import { SmartFilterBar } from './components/SmartFilterBar';
 import { 
   getCurrentSessionUser, 
   logoutUser, 
@@ -102,6 +110,9 @@ export function App() {
 
   // Search & Modals
   const [searchQuery, setSearchQuery] = useState('');
+  const [contactMethodFilter, setContactMethodFilter] = useState<ContactMethodFilter>('all');
+  const [countryFilter, setCountryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | LeadStatus>('all');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [contactingLead, setContactingLead] = useState<Lead | null>(null);
 
@@ -332,49 +343,59 @@ export function App() {
   // Authorized CRM Workspace
   // ==========================================
 
-  // Section Filtering Logic (Requirement B)
-  const getSectionLeads = () => {
-    switch (currentSection) {
-      case 'new':
-        return leads.filter(l => l.status === 'new');
-      case 'to_contact':
-        return leads.filter(l => l.status === 'to_contact' || l.status === 'new');
-      case 'only_phone_numbers':
-        return leads.filter(l => {
-          const hasEmail = Boolean(l.businessEmail && l.businessEmail.trim());
-          const hasPhone = Boolean(l.businessPhone && l.businessPhone.trim());
-          return !hasEmail && hasPhone;
+  // Dynamic countries detected across actual database records (Requirement 3)
+  const availableCountries = useMemo(() => {
+    return getAvailableCountries(leads);
+  }, [leads]);
+
+  // Overall lead metrics (Requirement 7)
+  const leadMetrics = useMemo(() => {
+    return calculateLeadMetrics(leads);
+  }, [leads]);
+
+  // Idempotent migration / backfill for existing leads on load (Requirement 6)
+  useEffect(() => {
+    if (leads.length > 0) {
+      const needsBackfill = leads.some(l => !l.contactType || l.hasValidPhone === undefined || !l.phoneCountry);
+      if (needsBackfill) {
+        backfillLeadClassification(leads).then(({ backfilledCount }) => {
+          if (backfilledCount > 0) {
+            console.log(`[CAVENTRA CRM] Backfilled contact & country classification for ${backfilledCount} leads.`);
+          }
         });
-      case 'contacted':
-        return leads.filter(l => l.status === 'contacted');
-      case 'in_discussion':
-        return leads.filter(l => l.status === 'in_discussion');
-      case 'won':
-        return leads.filter(l => l.status === 'won');
-      case 'lost':
-        return leads.filter(l => l.status === 'lost');
-      case 'all':
-      default:
-        return leads;
+      }
     }
+  }, [leads]);
+
+  // Multi-dimensional smart filtering (Requirement 4)
+  const filteredLeads = useMemo(() => {
+    return filterLeads(leads, {
+      section: currentSection,
+      contactMethod: contactMethodFilter,
+      country: countryFilter,
+      status: statusFilter,
+      searchQuery: searchQuery,
+    });
+  }, [leads, currentSection, contactMethodFilter, countryFilter, statusFilter, searchQuery]);
+
+  const handleResetFilters = () => {
+    setContactMethodFilter('all');
+    setCountryFilter('all');
+    setStatusFilter('all');
   };
 
-  const sectionLeads = getSectionLeads();
-
-  // Search filter applied on top of current section
-  const filteredLeads = sectionLeads.filter(lead => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      lead.businessName.toLowerCase().includes(q) ||
-      lead.city.toLowerCase().includes(q) ||
-      lead.normalizedDomain.toLowerCase().includes(q) ||
-      (lead.contactName && lead.contactName.toLowerCase().includes(q)) ||
-      (lead.businessPhone && lead.businessPhone.includes(q)) ||
-      (lead.businessEmail && lead.businessEmail.toLowerCase().includes(q)) ||
-      lead.serviceOpportunity.toLowerCase().includes(q)
-    );
-  });
+  // Safe lead update with immediate reclassification (Requirement 5 & 9)
+  const handleUpdateLead = async (leadId: string, updates: Partial<Lead>) => {
+    try {
+      await updateLead(leadId, updates, currentUser);
+      showNotification('Lead updated and reclassified successfully.');
+      if (selectedLead && selectedLead.id === leadId) {
+        setSelectedLead({ ...selectedLead, ...updates });
+      }
+    } catch (e: any) {
+      alert(`Update failed: ${e.message}`);
+    }
+  };
 
   // Status update
   const handleUpdateStatus = async (leadId: string, newStatus: LeadStatus) => {
@@ -726,7 +747,9 @@ export function App() {
         followUpsCount={pendingFollowUpsCount}
         newLeadsCount={newLeadsCount}
         pendingCount={pendingRegistrationsCount}
-        onlyPhoneCount={onlyPhoneCount}
+        onlyPhoneCount={leadMetrics.phoneOnlyLeads}
+        indianLeadsCount={leadMetrics.indianLeads}
+        internationalLeadsCount={leadMetrics.internationalLeads}
       />
 
       {/* Main Content Area */}
@@ -750,7 +773,36 @@ export function App() {
              currentSection !== 'drive_import_status' && 
              currentSection !== 'pending_registrations' && 
              currentSection !== 'email_outreach' && (
-              <StatsRow leads={leads} />
+              <StatsRow 
+                leads={leads} 
+                currentSection={currentSection}
+                onSelectSection={(s) => {
+                  setActiveLegalPage(null);
+                  setCurrentSection(s);
+                }}
+                onSelectContactMethod={(m) => setContactMethodFilter(m)}
+              />
+            )}
+
+            {/* Smart Contact & Country Filter Bar (Requirement 4) */}
+            {currentSection !== 'follow_ups' && 
+             currentSection !== 'import_history' && 
+             currentSection !== 'drive_import_status' && 
+             currentSection !== 'pending_registrations' && 
+             currentSection !== 'email_outreach' && leads.length > 0 && (
+              <SmartFilterBar
+                currentSection={currentSection}
+                contactMethodFilter={contactMethodFilter}
+                setContactMethodFilter={setContactMethodFilter}
+                countryFilter={countryFilter}
+                setCountryFilter={setCountryFilter}
+                statusFilter={statusFilter}
+                setStatusFilter={setStatusFilter}
+                availableCountries={availableCountries}
+                filteredCount={filteredLeads.length}
+                totalCount={leads.length}
+                onResetFilters={handleResetFilters}
+              />
             )}
 
             {/* Follow-ups Dedicated Task List (Section D) */}
@@ -889,6 +941,7 @@ export function App() {
           setSelectedLead(null);
           setContactingLead(lead);
         }}
+        onUpdateLead={handleUpdateLead}
         activities={activities}
         onAddNote={handleAddNote}
       />

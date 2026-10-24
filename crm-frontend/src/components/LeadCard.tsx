@@ -1,5 +1,6 @@
 import React from 'react';
 import { Lead, LeadStatus, User } from '../types/crm';
+import { getCountryFlag } from '../services/leadClassifier';
 import { 
   ExternalLink, 
   Phone, 
@@ -8,7 +9,8 @@ import {
   AlertCircle,
   Calendar,
   CheckCircle2,
-  Clock
+  Clock,
+  Globe
 } from 'lucide-react';
 
 interface LeadCardProps {
@@ -40,6 +42,48 @@ export const LeadCard: React.FC<LeadCardProps> = ({
             <h4 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors text-sm line-clamp-1">
               {lead.businessName}
             </h4>
+            
+            {/* Phone Country Badge */}
+            {lead.phoneCountry && lead.phoneCountry !== 'Unknown' && (
+              <span className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono border ${
+                lead.phoneCountryCode === 'IN' || lead.phoneCountry === 'India'
+                  ? 'bg-amber-50 text-amber-900 border-amber-200'
+                  : 'bg-blue-50 text-blue-900 border-blue-200'
+              }`} title={`Phone Country: ${lead.phoneCountry} (${lead.countryClassificationStatus || 'verified'})`}>
+                <span>{getCountryFlag(lead.phoneCountryCode)}</span>
+                <span>{lead.phoneCountry}</span>
+              </span>
+            )}
+
+            {lead.countryClassificationStatus === 'needs_review' && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-amber-100 text-amber-800 border border-amber-300">
+                <AlertCircle className="w-2.5 h-2.5" />
+                <span>Needs Review</span>
+              </span>
+            )}
+
+            {/* Contact Type Badge */}
+            {lead.contactType === 'both' ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-blue-100 text-blue-800 border border-blue-200">
+                <span>Phone & Email</span>
+              </span>
+            ) : lead.contactType === 'phone_only' ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <Phone className="w-2.5 h-2.5" />
+                <span>Phone Only</span>
+              </span>
+            ) : lead.contactType === 'email_only' ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-indigo-100 text-indigo-800 border border-indigo-200">
+                <Mail className="w-2.5 h-2.5" />
+                <span>Email Only</span>
+              </span>
+            ) : lead.contactType === 'missing' ? (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-rose-100 text-rose-800 border border-rose-300">
+                <AlertCircle className="w-2.5 h-2.5" />
+                <span>Missing Contact</span>
+              </span>
+            ) : null}
+
             {lead.outreachStatus && (
               <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase ${
                 lead.outreachStatus === 'sent' ? 'bg-emerald-100 text-emerald-800' :
@@ -50,12 +94,6 @@ export const LeadCard: React.FC<LeadCardProps> = ({
               }`}>
                 <Mail className="w-2.5 h-2.5" />
                 <span>{lead.outreachStatus}</span>
-              </span>
-            )}
-            {!lead.businessEmail && lead.businessPhone && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-bold font-mono bg-emerald-100 text-emerald-800 border border-emerald-200">
-                <Phone className="w-2.5 h-2.5" />
-                <span>Phone Only</span>
               </span>
             )}
           </div>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Lead, LeadStatus, User, Activity } from '../types/crm';
-import { X, ExternalLink, Phone, Mail, MapPin, Send, Trash2, CheckCircle2, Calendar, Clock } from 'lucide-react';
+import { getCountryFlag } from '../services/leadClassifier';
+import { X, ExternalLink, Phone, Mail, MapPin, Send, Trash2, CheckCircle2, Calendar, Clock, Edit2, Check, AlertCircle } from 'lucide-react';
 
 interface LeadModalProps {
   lead: Lead | null;
@@ -11,6 +12,7 @@ interface LeadModalProps {
   onUpdateAssignee: (leadId: string, assignedTo: string | null) => void;
   onDeleteLead: (leadId: string) => void;
   onOpenContactModal: (lead: Lead) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Lead>) => Promise<void>;
   activities: Activity[];
   onAddNote: (leadId: string, text: string) => void;
 }
@@ -24,6 +26,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   onUpdateAssignee,
   onDeleteLead,
   onOpenContactModal,
+  onUpdateLead,
   activities,
   onAddNote,
 }) => {
@@ -31,6 +34,34 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const [noteText, setNoteText] = useState('');
   const leadActivities = activities.filter(a => a.leadId === lead.id);
+
+  // Editable Contact Details
+  const [isEditingContact, setIsEditingContact] = useState(false);
+  const [editPhone, setEditPhone] = useState(lead.businessPhone || '');
+  const [editEmail, setEditEmail] = useState(lead.businessEmail || '');
+  const [isSavingContact, setIsSavingContact] = useState(false);
+
+  useEffect(() => {
+    setEditPhone(lead.businessPhone || '');
+    setEditEmail(lead.businessEmail || '');
+    setIsEditingContact(false);
+  }, [lead.id, lead.businessPhone, lead.businessEmail]);
+
+  const handleSaveContactDetails = async () => {
+    if (!onUpdateLead) return;
+    setIsSavingContact(true);
+    try {
+      await onUpdateLead(lead.id, {
+        businessPhone: editPhone.trim() || null,
+        businessEmail: editEmail.trim() || null,
+      });
+      setIsEditingContact(false);
+    } catch (e: any) {
+      alert(`Failed to update contact info: ${e.message}`);
+    } finally {
+      setIsSavingContact(false);
+    }
+  };
 
   // Dynamic list of assignable employees:
   // 1. Current logged-in user is ALWAYS first and available
@@ -175,53 +206,141 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             </div>
           </div>
 
-          {/* Contact Details */}
+          {/* Contact Details & Classification */}
           <div>
-            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-              Contact Credentials
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Phone Number</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="font-semibold text-slate-800 font-mono">{lead.businessPhone || 'Not available'}</span>
-                  {lead.businessPhone && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <a
-                        href={`tel:${lead.businessPhone}`}
-                        className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100"
-                      >
-                        Call
-                      </a>
-                      <a
-                        href={`https://wa.me/${lead.businessPhone.replace(/[^\d]/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold text-xs hover:bg-emerald-100"
-                        title="Chat on WhatsApp"
-                      >
-                        WhatsApp
-                      </a>
-                    </div>
-                  )}
-                </div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Contact Credentials & Classification
+                </h4>
+                {lead.phoneCountry && lead.phoneCountry !== 'Unknown' && (
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border ${
+                    lead.phoneCountryCode === 'IN' || lead.phoneCountry === 'India'
+                      ? 'bg-amber-50 text-amber-900 border-amber-200'
+                      : 'bg-blue-50 text-blue-900 border-blue-200'
+                  }`}>
+                    <span>{getCountryFlag(lead.phoneCountryCode)}</span>
+                    <span>{lead.phoneCountry}</span>
+                    <span className="text-[9px] text-slate-400 capitalize">({lead.countryClassificationStatus || 'verified'})</span>
+                  </span>
+                )}
               </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Email Address</span>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="font-semibold text-slate-800 truncate font-mono">{lead.businessEmail || 'Not available'}</span>
-                  {lead.businessEmail && (
-                    <a
-                      href={`mailto:${lead.businessEmail}`}
-                      className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100 shrink-0"
-                    >
-                      Email
-                    </a>
-                  )}
-                </div>
-              </div>
+              
+              {onUpdateLead && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingContact(!isEditingContact)}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit2 className="w-3 h-3" />
+                  <span>{isEditingContact ? 'Cancel' : 'Edit Contact Details'}</span>
+                </button>
+              )}
             </div>
+
+            {isEditingContact ? (
+              <div className="p-3 bg-slate-50 rounded-xl border border-blue-200 text-xs space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Business Phone (International Format)
+                    </label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="+91 98765 43210 or +971 50..."
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Include +country code (e.g. +91, +1, +44, +971).
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                      Business Email Address
+                    </label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="contact@business.com"
+                      className="w-full bg-white border border-slate-300 rounded-lg p-2 font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Leave empty to classify as Phone-Only.
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingContact(false)}
+                    className="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 font-semibold text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingContact}
+                    onClick={handleSaveContactDetails}
+                    className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>{isSavingContact ? 'Saving...' : 'Save & Reclassify'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Phone Number</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-semibold text-slate-800 font-mono">
+                      {lead.normalizedPhone || lead.businessPhone || 'Not available'}
+                    </span>
+                    {lead.businessPhone && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <a
+                          href={`tel:${lead.businessPhone}`}
+                          className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100"
+                        >
+                          Call
+                        </a>
+                        <a
+                          href={`https://wa.me/${lead.businessPhone.replace(/[^\d]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-2.5 py-1 rounded bg-emerald-50 text-emerald-700 font-semibold text-xs hover:bg-emerald-100"
+                          title="Chat on WhatsApp"
+                        >
+                          WhatsApp
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Email Address</span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-semibold text-slate-800 truncate font-mono">
+                      {lead.normalizedEmail || lead.businessEmail || 'Not available'}
+                    </span>
+                    {lead.businessEmail && (
+                      <a
+                        href={`mailto:${lead.businessEmail}`}
+                        className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold text-xs hover:bg-blue-100 shrink-0"
+                      >
+                        Email
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Automatic Outreach Status Banner */}

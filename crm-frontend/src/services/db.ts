@@ -23,6 +23,7 @@ import {
   OutreachCampaign
 } from '../types/crm';
 import { queueOutreachForLead, DEFAULT_CAMPAIGN } from './outreach';
+import { classifyLead, ensureLeadClassified } from './leadClassifier';
 
 // Local storage keys for offline/local mode
 const STORAGE_KEYS = {
@@ -119,25 +120,27 @@ export const deduplicateLeadsList = (leads: Lead[]): Lead[] => {
   for (const l of leads) {
     if (seenIds.has(l.id)) continue;
 
-    const email = normalizeEmail(l.businessEmail);
+    const classified = ensureLeadClassified(l);
+
+    const email = normalizeEmail(classified.businessEmail || classified.email);
     if (email && seenEmails.has(email)) continue;
 
-    const domain = normalizeDomain(l.normalizedDomain || l.website);
+    const domain = normalizeDomain(classified.normalizedDomain || classified.website);
     if (domain && seenDomains.has(domain)) continue;
 
-    const phone = normalizePhone(l.businessPhone);
+    const phone = normalizePhone(classified.businessPhone);
     if (phone && seenPhones.has(phone)) continue;
 
-    const name = normalizeBusinessName(l.businessName);
-    if (name && name.length >= 4 && seenNames.has(name) && (l.sourceFileName || email || domain)) continue;
+    const name = normalizeBusinessName(classified.businessName);
+    if (name && name.length >= 4 && seenNames.has(name) && (classified.sourceFileName || email || domain)) continue;
 
-    seenIds.add(l.id);
+    seenIds.add(classified.id);
     if (email) seenEmails.add(email);
     if (domain) seenDomains.add(domain);
     if (phone) seenPhones.add(phone);
     if (name) seenNames.add(name);
 
-    unique.push(l);
+    unique.push(classified);
   }
   return unique;
 };
@@ -386,16 +389,19 @@ export const subscribeIngestionJobs = (callback: (jobs: IngestionJob[]) => void)
 
 // 5. Save Single Lead
 export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => {
+  // Always ensure lead is classified according to contact method and country
+  const classifiedLead = ensureLeadClassified(lead);
+
   // Enforce duplicate validation against current leads
   const existing = await getAllCurrentLeads();
-  const dupCheck = checkIsDuplicateLead(lead, existing);
+  const dupCheck = checkIsDuplicateLead(classifiedLead, existing);
   if (dupCheck.isDuplicate) {
     throw new Error(dupCheck.reason || 'Lead already exists');
   }
 
   const activity: Activity = {
     id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    leadId: lead.id,
+    leadId: classifiedLead.id,
     type: 'note',
     title: 'Lead Created',
     description: `Created manually by ${performedBy.name}`,
@@ -405,8 +411,8 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
   };
 
   if (isFirebaseConfigured() && db) {
-    const leadRef = doc(db, 'leads', lead.id);
-    await setDoc(leadRef, lead);
+    const leadRef = doc(db, 'leads', classifiedLead.id);
+    await setDoc(leadRef, classifiedLead);
     const actRef = doc(db, 'activities', activity.id);
     await setDoc(actRef, activity);
 
@@ -414,8 +420,8 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
     try {
       const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
       const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
-      if (campaign.status === 'ACTIVE' && lead.businessEmail) {
-        await queueOutreachForLead(lead, campaign, performedBy);
+      if (campaign.status === 'ACTIVE' && classifiedLead.businessEmail) {
+        await queueOutreachForLead(classifiedLead, campaign, performedBy);
       }
     } catch (e) {
       console.warn('Outreach queuing skipped:', e);
@@ -426,7 +432,7 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
 
   // Local storage update
   const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
-  setStored(STORAGE_KEYS.LEADS, [lead, ...leads]);
+  setStored(STORAGE_KEYS.LEADS, [classifiedLead, ...leads]);
 
   const activities = getStored<Activity[]>(STORAGE_KEYS.ACTIVITIES, []);
   setStored(STORAGE_KEYS.ACTIVITIES, [activity, ...activities]);
@@ -435,22 +441,54 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
   try {
     const storedCamp = localStorage.getItem('caventra_outreach_campaign');
     const campaign = storedCamp ? JSON.parse(storedCamp) : DEFAULT_CAMPAIGN;
-    if (campaign.status === 'ACTIVE' && lead.businessEmail) {
-      await queueOutreachForLead(lead, campaign, performedBy);
+    if (campaign.status === 'ACTIVE' && classifiedLead.businessEmail) {
+      await queueOutreachForLead(classifiedLead, campaign, performedBy);
     }
   } catch (e) {
     console.warn('Local outreach queuing skipped:', e);
   }
 };
 
-// 6. Update Lead (Safe partial update)
+// 6. Update Lead (Safe partial update with immediate automatic reclassification)
 export const updateLead = async (
   leadId: string, 
   updates: Partial<Lead>, 
   performedBy: User
 ): Promise<void> => {
+  let computedUpdates = { ...updates };
+
+  // Recalculate classification immediately if phone, email, or country changed (Requirement 5 & 9)
+  const isContactInfoChanged = (
+    updates.businessPhone !== undefined ||
+    updates.businessEmail !== undefined ||
+    (updates as any).phone !== undefined ||
+    (updates as any).email !== undefined ||
+    updates.country !== undefined
+  );
+
+  if (isContactInfoChanged) {
+    let existingLead: Lead | undefined;
+    if (isFirebaseConfigured() && db) {
+      try {
+        const snap = await getDoc(doc(db, 'leads', leadId));
+        if (snap.exists()) existingLead = snap.data() as Lead;
+      } catch (e) {}
+    }
+    if (!existingLead) {
+      const stored = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+      existingLead = stored.find(l => l.id === leadId);
+    }
+
+    const merged = { ...(existingLead || {}), ...updates };
+    const classification = classifyLead(merged);
+    computedUpdates = {
+      ...computedUpdates,
+      ...classification,
+    };
+  }
+
   const cleanUpdates = {
-    ...updates,
+    ...computedUpdates,
     updatedAt: new Date().toISOString(),
   };
 
@@ -463,6 +501,46 @@ export const updateLead = async (
   const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
   const updatedLeads = leads.map(l => l.id === leadId ? { ...l, ...cleanUpdates } : l);
   setStored(STORAGE_KEYS.LEADS, updatedLeads);
+};
+
+// 6b. Idempotent Migration / Backfill to classify existing leads (Requirement 6)
+export const backfillLeadClassification = async (
+  leads: Lead[]
+): Promise<{ backfilledCount: number; leads: Lead[] }> => {
+  let backfilledCount = 0;
+
+  const upgradedLeads = leads.map((l) => {
+    // Check if classification fields are missing or not yet derived
+    if (!l.contactType || l.hasValidPhone === undefined || !l.phoneCountry) {
+      backfilledCount++;
+      return ensureLeadClassified(l);
+    }
+    return l;
+  });
+
+  if (backfilledCount > 0) {
+    setStored(STORAGE_KEYS.LEADS, upgradedLeads);
+
+    if (isFirebaseConfigured() && db) {
+      try {
+        const firestore = db;
+        const unclassified = upgradedLeads.filter((_, idx) => !leads[idx].contactType);
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < unclassified.length; i += CHUNK_SIZE) {
+          const chunk = unclassified.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(firestore);
+          for (const l of chunk) {
+            batch.set(doc(firestore, 'leads', l.id), l, { merge: true });
+          }
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn('Firestore classification backfill warning:', e);
+      }
+    }
+  }
+
+  return { backfilledCount, leads: upgradedLeads };
 };
 
 // 7. Delete Lead
@@ -553,7 +631,7 @@ export const batchImportLeads = async (
       if (lPhone) existingPhones.add(lPhone);
       if (lName) existingNames.add(lName);
 
-      trulyNewLeads.push(lead);
+      trulyNewLeads.push(ensureLeadClassified(lead));
     }
 
     if (trulyNewLeads.length === 0) {
