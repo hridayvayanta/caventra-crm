@@ -1,46 +1,40 @@
 /**
  * ============================================================================
  * CAVENTRA CRM — ALL-IN-ONE GOOGLE DRIVE LEAD INGESTION SCRIPT (₹0 BUDGET)
- * ============================================================================
  * Folder ID: 1VcNqOmAIhhDIE2FHDY1Aimzn_HCCcFv_
+ * ============================================================================
  */
 
 var CONFIG = {
-  // Your connected Google Drive Folder with the Excel files
   INBOX_FOLDER_ID: '1VcNqOmAIhhDIE2FHDY1Aimzn_HCCcFv_',
-
-  // Optional: Your Firebase Project ID
   FIRESTORE_PROJECT_ID: 'caventra-crm'
 };
 
-// --- 1-CLICK GMAIL AUTHORIZATION TEST (Run this once to authorize Gmail sending) ---
-function testSendEmail() {
-  var myEmail = Session.getActiveUser().getEmail() || 'hridayvayanta7@gmail.com';
-  GmailApp.sendEmail(myEmail, 'CAVENTRA Outreach System Connected', 'Your Gmail outreach integration is successfully authorized and working perfectly!');
-  Logger.log('✓ Success: Test email sent to ' + myEmail);
-}
-
-// --- TEST FUNCTION: Run this in Apps Script Editor to see EVERY file in your Drive folder ---
+// --- TEST FUNCTION: Check how many files Google Drive sees ---
 function testDriveFolderAccess() {
   Logger.log('=== AUDITING GOOGLE DRIVE INBOX FOLDER ===');
-  Logger.log('Folder ID: ' + CONFIG.INBOX_FOLDER_ID);
   try {
     var folder = DriveApp.getFolderById(CONFIG.INBOX_FOLDER_ID);
-    Logger.log('✓ SUCCESS: Connected to folder "' + folder.getName() + '"');
     var files = folder.getFiles();
     var count = 0;
     while (files.hasNext()) {
       var f = files.next();
       count++;
-      Logger.log('File ' + count + ': "' + f.getName() + '" | Type: ' + f.getMimeType() + ' | Size: ' + (f.getSize() / 1024).toFixed(1) + ' KB');
     }
-    Logger.log('=== TOTAL FILES FOUND IN DRIVE: ' + count + ' ===');
+    Logger.log('✓ Success: Connected to folder "' + folder.getName() + '"');
+    Logger.log('Total files found in Drive: ' + count);
   } catch (e) {
-    Logger.log('❌ FAILED TO ACCESS FOLDER: ' + e.message);
+    Logger.log('❌ Error: ' + e.message);
   }
 }
 
-// --- MAIN INGESTION FUNCTION ---
+// --- WEB API (Called by CAVENTRA CRM "Sync Drive" button) ---
+function doGet(e) {
+  var result = runScheduledIngestion(true);
+  return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// --- MAIN INGESTION FUNCTION (Newest-First Processing) ---
 function runScheduledIngestion(isWebInvocation) {
   Logger.log('=== CAVENTRA LEAD INGESTION RUN STARTED ===');
   var folder = DriveApp.getFolderById(CONFIG.INBOX_FOLDER_ID);
@@ -48,12 +42,10 @@ function runScheduledIngestion(isWebInvocation) {
   var allExtractedLeads = [];
   var fileCount = 0;
 
-  // 1. Collect all valid spreadsheet workbooks
   var fileList = [];
   while (files.hasNext()) {
     var file = files.next();
     var fileName = file.getName();
-    // Skip cached converted sheets
     if (fileName.indexOf('[Converted]') === 0) continue;
 
     var lowerName = fileName.toLowerCase();
@@ -64,20 +56,15 @@ function runScheduledIngestion(isWebInvocation) {
       file.getMimeType() === 'application/vnd.ms-excel'
     );
 
-    if (isSheet || isExcel) {
-      fileList.push(file);
-    }
+    if (isSheet || isExcel) fileList.push(file);
   }
 
-  // 2. Sort files DESCENDING by last updated date (NEWEST files processed first!)
   fileList.sort(function(a, b) {
     return b.getLastUpdated().getTime() - a.getLastUpdated().getTime();
   });
 
   Logger.log('Total spreadsheet workbooks found: ' + fileList.length);
 
-  // 3. To guarantee instant web response without timeout, process the most recent files
-  // (e.g. up to 15 newest workbooks per sync; repeat sync grabs any additional)
   var maxToProcess = isWebInvocation ? Math.min(fileList.length, 15) : fileList.length;
 
   for (var i = 0; i < maxToProcess; i++) {
@@ -90,7 +77,7 @@ function runScheduledIngestion(isWebInvocation) {
     }
   }
 
-  Logger.log('=== TOTAL VALIDATED LEADS EXTRACTED: ' + allExtractedLeads.length + ' FROM ' + fileCount + ' WORKBOOKS ===');
+  Logger.log('=== TOTAL EXTRACTED: ' + allExtractedLeads.length + ' LEADS FROM ' + fileCount + ' WORKBOOKS ===');
 
   return { 
     success: true, 
@@ -117,7 +104,6 @@ function parseSpreadsheetFile(file, folder) {
   var isCsv = (mimeType === 'text/csv' || lowerName.endsWith('.csv'));
 
   if (!isSheet && !isExcel && !isCsv) return [];
-
   var spreadsheet = null;
 
   try {
@@ -143,9 +129,7 @@ function parseSpreadsheetFile(file, folder) {
       } else {
         var blob = file.getBlob();
         var insertConfig = { title: convertedTitle, mimeType: MimeType.GOOGLE_SHEETS };
-        if (folder) {
-          insertConfig.parents = [{ id: folder.getId() }];
-        }
+        if (folder) insertConfig.parents = [{ id: folder.getId() }];
         var tempSheet = Drive.Files.insert(insertConfig, blob, { convert: true });
         spreadsheet = SpreadsheetApp.openById(tempSheet.id);
       }
@@ -153,21 +137,17 @@ function parseSpreadsheetFile(file, folder) {
 
     var sheets = spreadsheet.getSheets();
     if (!sheets || sheets.length === 0) return [];
-
     var extractedLeads = [];
 
-    // Parse EVERY sheet / tab in the workbook (never skip tab 2, 3, etc.)
     for (var s = 0; s < sheets.length; s++) {
       var currentSheet = sheets[s];
-      var sheetName = currentSheet.getName();
       var data = currentSheet.getDataRange().getValues();
       if (!data || data.length < 2) continue;
 
       var headerRowIdx = findHeaderRowIndex(data);
       var headers = data[headerRowIdx];
       var colMap = mapHeaders(headers);
-
-      var sourceLabel = fileName + (sheets.length > 1 ? ' (' + sheetName + ')' : '');
+      var sourceLabel = fileName + (sheets.length > 1 ? ' (' + currentSheet.getName() + ')' : '');
 
       for (var r = headerRowIdx + 1; r < data.length; r++) {
         var row = data[r];
@@ -177,24 +157,20 @@ function parseSpreadsheetFile(file, folder) {
         }
       }
     }
-
-    Logger.log('File "' + fileName + '": Found ' + extractedLeads.length + ' leads across ' + sheets.length + ' sheet(s)');
     return extractedLeads;
   } catch (err) {
-    Logger.log('❌ Error parsing ' + fileName + ': ' + err.message);
+    Logger.log('Error parsing ' + fileName + ': ' + err.message);
     return [];
   }
 }
 
-// --- DETECT WHICH ROW ACTUALLY CONTAINS THE HEADERS ---
+// --- INTELLIGENT HEADER ROW DETECTOR ---
 function findHeaderRowIndex(data) {
   var keywords = [
-    'company', 'business', 'name', 'client', 'firm',
-    'website', 'domain', 'url', 'web', 'site',
-    'email', 'mail', 'phone', 'mobile', 'tel', 'contact',
-    'city', 'country', 'industry', 'condition', 'notes'
+    'company', 'business', 'name', 'client', 'firm', 'website', 'domain', 'url', 'web', 'site',
+    'email', 'mail', 'phone', 'mobile', 'tel', 'contact', 'city', 'country', 'industry', 'condition', 'notes'
   ];
-  var bestIdx = 0;
+  var bestIdx = -1;
   var maxMatches = 0;
 
   for (var r = 0; r < Math.min(data.length, 10); r++) {
@@ -204,7 +180,8 @@ function findHeaderRowIndex(data) {
       var cell = String(row[c] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
       if (!cell) continue;
       for (var k = 0; k < keywords.length; k++) {
-        if (cell === keywords[k] || cell.indexOf(keywords[k]) !== -1) {
+        var kw = keywords[k].replace(/[^a-z0-9]/g, '');
+        if (cell === kw || cell.indexOf(kw) !== -1) {
           matches++;
           break;
         }
@@ -215,39 +192,163 @@ function findHeaderRowIndex(data) {
       bestIdx = r;
     }
   }
-  return bestIdx;
+  return bestIdx >= 0 ? bestIdx : 0;
 }
 
-// --- SMART ROW EXTRACTOR & VALIDATOR ---
+// --- PRECISION COLUMN HEADER MAPPING (Prevents Swapping or Random Guessing) ---
+function mapHeaders(headers) {
+  var map = { company: -1, website: -1, contact: -1, email: -1, phone: -1, city: -1, country: -1, industry: -1, notes: -1 };
+
+  // Pass 1: Identify Contact Person columns FIRST (so "Contact Name" is NEVER matched as "Company Name")
+  for (var i = 0; i < headers.length; i++) {
+    var raw = String(headers[i] || '').trim().toLowerCase();
+    var h = raw.replace(/[^a-z0-9]/g, '');
+    if (!h) continue;
+
+    if (map.contact === -1 && (
+      ['contactname', 'contactperson', 'personname', 'ownername', 'foundername', 'fullname', 'decisionmaker', 'contact', 'person', 'owner', 'founder', 'ceo', 'firstname', 'lastname'].indexOf(h) !== -1 ||
+      raw.indexOf('contact person') !== -1 || raw.indexOf('contact name') !== -1 || raw.indexOf('decision maker') !== -1 || raw.indexOf('owner name') !== -1
+    )) {
+      map.contact = i;
+    }
+  }
+
+  // Pass 2: High-confidence Company / Business Name
+  for (var i = 0; i < headers.length; i++) {
+    if (i === map.contact) continue;
+    var raw = String(headers[i] || '').trim().toLowerCase();
+    var h = raw.replace(/[^a-z0-9]/g, '');
+    if (!h) continue;
+
+    // Never match serial number or ID columns as Company
+    if (h === 'id' || h === 'sno' || h === 'srno' || h === 'no' || h === 'serial' || h === 'clientid' || h === 'accountid' || h === 'leadid' || h === 'code') continue;
+
+    if (['companyname', 'businessname', 'firmname', 'agencyname', 'orgname', 'organizationname', 'brandname', 'storename', 'shopname', 'clientname'].indexOf(h) !== -1 ||
+        raw.indexOf('company name') !== -1 || raw.indexOf('business name') !== -1 || raw.indexOf('firm name') !== -1) {
+      map.company = i;
+      break;
+    }
+  }
+
+  // Pass 3: Standalone "Company", "Business", "Firm", "Agency"
+  if (map.company === -1) {
+    for (var i = 0; i < headers.length; i++) {
+      if (i === map.contact) continue;
+      var raw = String(headers[i] || '').trim().toLowerCase();
+      var h = raw.replace(/[^a-z0-9]/g, '');
+      if (h === 'id' || h === 'sno' || h === 'srno' || h === 'no' || h === 'clientid') continue;
+
+      if (['company', 'business', 'firm', 'agency', 'client', 'organization', 'brand'].indexOf(h) !== -1 ||
+          (raw.indexOf('company') !== -1 && raw.indexOf('email') === -1 && raw.indexOf('id') === -1) ||
+          (raw.indexOf('business') !== -1 && raw.indexOf('email') === -1 && raw.indexOf('id') === -1)) {
+        map.company = i;
+        break;
+      }
+    }
+  }
+
+  // Pass 4: Standalone "Name" or "Title" (ONLY if no explicit company column exists and not contact)
+  if (map.company === -1) {
+    for (var i = 0; i < headers.length; i++) {
+      if (i === map.contact) continue;
+      var raw = String(headers[i] || '').trim().toLowerCase();
+      var h = raw.replace(/[^a-z0-9]/g, '');
+      if (h === 'name' || h === 'title') {
+        map.company = i;
+        break;
+      }
+    }
+  }
+
+  // Pass 5: Match remaining columns
+  for (var i = 0; i < headers.length; i++) {
+    if (i === map.company || i === map.contact) continue;
+    var raw = String(headers[i] || '').trim().toLowerCase();
+    var h = raw.replace(/[^a-z0-9]/g, '');
+    if (!h) continue;
+
+    // Website / Domain
+    if (map.website === -1 && (
+      ['website', 'domain', 'url', 'web', 'site', 'websiteurl', 'weburl', 'domainname', 'link'].indexOf(h) !== -1 ||
+      raw.indexOf('website') !== -1 || raw.indexOf('domain') !== -1 || raw.indexOf('url') !== -1
+    )) {
+      map.website = i;
+    }
+    // Email
+    else if (map.email === -1 && (
+      ['email', 'businessemail', 'mail', 'emailaddress', 'contactemail', 'primaryemail', 'workemail', 'companyemail'].indexOf(h) !== -1 ||
+      raw.indexOf('email') !== -1 || raw.indexOf('mail') !== -1
+    )) {
+      map.email = i;
+    }
+    // Phone
+    else if (map.phone === -1 && (
+      ['phone', 'mobile', 'tel', 'businessphone', 'telephone', 'phonenumber', 'contactnumber', 'telephonenumber', 'mobilenumber', 'phoneno', 'mobileno', 'cell', 'whatsapp'].indexOf(h) !== -1 ||
+      raw.indexOf('phone') !== -1 || raw.indexOf('mobile') !== -1 || raw.indexOf('tel') !== -1
+    )) {
+      map.phone = i;
+    }
+    // City
+    else if (map.city === -1 && ['city', 'location', 'town', 'district'].indexOf(h) !== -1) {
+      map.city = i;
+    }
+    // Country / State
+    else if (map.country === -1 && ['country', 'nation', 'region', 'state'].indexOf(h) !== -1) {
+      map.country = i;
+    }
+    // Industry
+    else if (map.industry === -1 && ['industry', 'sector', 'category', 'niche', 'type'].indexOf(h) !== -1) {
+      map.industry = i;
+    }
+    // Notes
+    else if (map.notes === -1 && ['notes', 'comments', 'description', 'need', 'condition', 'audit'].indexOf(h) !== -1) {
+      map.notes = i;
+    }
+  }
+
+  return map;
+}
+
+// --- EXACT LEAD EXTRACTOR (No Random Guessing) ---
 function smartExtractLeadFromRow(row, colMap, fileName) {
   var rowText = row.join(' ').trim();
   if (!rowText || rowText.length < 4) return null;
 
-  // Filter out sheet titles, banners, or header repeats
   var lowerJoined = rowText.toLowerCase();
-  if (lowerJoined.indexOf('caventra') !== -1 && (lowerJoined.indexOf('lead') !== -1 || lowerJoined.indexOf('pipeline') !== -1 || lowerJoined.indexOf('workbook') !== -1)) {
-    return null;
-  }
-  if (lowerJoined.indexOf('company name') !== -1 && lowerJoined.indexOf('email') !== -1) {
-    return null;
-  }
-  if (lowerJoined.indexOf('total leads') !== -1 || lowerJoined.indexOf('summary report') !== -1) {
-    return null;
+  if (lowerJoined.indexOf('caventra') !== -1 && (lowerJoined.indexOf('lead') !== -1 || lowerJoined.indexOf('pipeline') !== -1 || lowerJoined.indexOf('workbook') !== -1)) return null;
+  if (lowerJoined.indexOf('company name') !== -1 && lowerJoined.indexOf('email') !== -1) return null;
+  if (lowerJoined.indexOf('total leads') !== -1 || lowerJoined.indexOf('summary report') !== -1) return null;
+
+  // 1. Strict extraction from mapped columns ONLY
+  var company = colMap.company !== -1 && colMap.company < row.length ? String(row[colMap.company] || '').trim() : '';
+  var contact = colMap.contact !== -1 && colMap.contact < row.length ? String(row[colMap.contact] || '').trim() : '';
+  var website = colMap.website !== -1 && colMap.website < row.length ? String(row[colMap.website] || '').trim() : '';
+  var email = colMap.email !== -1 && colMap.email < row.length ? String(row[colMap.email] || '').trim().toLowerCase() : '';
+  var phone = colMap.phone !== -1 && colMap.phone < row.length ? String(row[colMap.phone] || '').trim() : '';
+  var city = colMap.city !== -1 && colMap.city < row.length ? String(row[colMap.city] || '').trim() : '';
+  var country = colMap.country !== -1 && colMap.country < row.length ? String(row[colMap.country] || '').trim() : '';
+  var industry = colMap.industry !== -1 && colMap.industry < row.length ? String(row[colMap.industry] || '').trim() : '';
+  var notes = colMap.notes !== -1 && colMap.notes < row.length ? String(row[colMap.notes] || '').trim() : '';
+
+  // Clean company name: remove leading numbers like "1. ", "01 ", "#1 "
+  company = company.replace(/^[\d#\-_.]+\s*[-:.)]\s*/, '').trim();
+
+  // If website was not in mapped column, detect URL cell
+  if (!website) {
+    for (var c = 0; c < row.length; c++) {
+      if (c === colMap.company || c === colMap.contact) continue;
+      var cellVal = String(row[c] || '').trim().toLowerCase();
+      if ((cellVal.indexOf('http') === 0 || cellVal.indexOf('www.') === 0 || cellVal.indexOf('.com') !== -1 || cellVal.indexOf('.in') !== -1 || cellVal.indexOf('.co') !== -1 || cellVal.indexOf('.org') !== -1) && cellVal.indexOf('@') === -1) {
+        website = cellVal;
+        break;
+      }
+    }
   }
 
-  var company = colMap.company !== -1 ? String(row[colMap.company] || '').trim() : '';
-  var email = colMap.email !== -1 ? String(row[colMap.email] || '').trim().toLowerCase() : '';
-  var phone = colMap.phone !== -1 ? String(row[colMap.phone] || '').trim() : '';
-  var website = colMap.website !== -1 ? String(row[colMap.website] || '').trim() : '';
-  var contact = colMap.contact !== -1 ? String(row[colMap.contact] || '').trim() : '';
-  var city = colMap.city !== -1 ? String(row[colMap.city] || '').trim() : '';
-  var country = colMap.country !== -1 ? String(row[colMap.country] || '').trim() : '';
-  var industry = colMap.industry !== -1 ? String(row[colMap.industry] || '').trim() : '';
-  var notes = colMap.notes !== -1 ? String(row[colMap.notes] || '').trim() : '';
-
-  // 1. Cell-level Email detection (if mapped column missed it)
+  // If email was not in mapped column, detect email cell
   if (!email || email.indexOf('@') === -1) {
     for (var c = 0; c < row.length; c++) {
+      if (c === colMap.company || c === colMap.contact) continue;
       var cellVal = String(row[c] || '').trim();
       if (cellVal.indexOf('@') !== -1 && cellVal.indexOf('.') !== -1 && !cellVal.startsWith('http')) {
         email = cellVal.toLowerCase();
@@ -256,10 +357,11 @@ function smartExtractLeadFromRow(row, colMap, fileName) {
     }
   }
 
-  // 2. Cell-level Phone detection (if mapped column missed it)
+  // If phone was not in mapped column, detect phone cell
   var cleanPhone = phone.replace(/[^\d+]/g, '');
   if (cleanPhone.replace(/[^\d]/g, '').length < 7) {
     for (var c = 0; c < row.length; c++) {
+      if (c === colMap.company || c === colMap.contact) continue;
       var cellVal = String(row[c] || '').trim();
       var digits = cellVal.replace(/[^\d]/g, '');
       if (digits.length >= 7 && digits.length <= 15 && cellVal.indexOf('@') === -1 && cellVal.indexOf('.com') === -1) {
@@ -270,48 +372,31 @@ function smartExtractLeadFromRow(row, colMap, fileName) {
     }
   }
 
-  // 3. Cell-level Website detection (if mapped column missed it)
-  if (!website) {
-    for (var c = 0; c < row.length; c++) {
-      var cellVal = String(row[c] || '').trim().toLowerCase();
-      if ((cellVal.indexOf('http') === 0 || cellVal.indexOf('www.') === 0 || cellVal.indexOf('.com') !== -1 || cellVal.indexOf('.in') !== -1 || cellVal.indexOf('.co') !== -1 || cellVal.indexOf('.org') !== -1) && cellVal.indexOf('@') === -1) {
-        website = cellVal;
-        break;
+  // If company name was empty or just a number, derive clean business name from website domain
+  // (NEVER randomly pick other cells like city, notes, or status!)
+  if (!company || /^[\d\s\-_.,#]+$/.test(company)) {
+    if (website) {
+      var cleanDom = website.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0].split('.')[0];
+      if (cleanDom && cleanDom.length >= 3 && cleanDom !== 'unknown') {
+        company = cleanDom.replace(/[-_]/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
       }
     }
   }
 
-  // 4. Company Name recovery (if mapped column was just a serial number or empty)
-  if (!company || /^[\d\s\-_.]+$/.test(company)) {
-    for (var c = 0; c < row.length; c++) {
-      var cellVal = String(row[c] || '').trim();
-      if (cellVal && cellVal !== email && cellVal !== phone && cellVal !== website && !/^[\d\s\-_.]+$/.test(cellVal)) {
-        if (cellVal.toLowerCase().indexOf('caventra') === -1 && cellVal.length >= 2) {
-          company = cellVal;
-          break;
-        }
-      }
-    }
-  }
-
-  // Reject titles masquerading as companies
+  // Reject invalid / generic placeholder names
   var compLower = company.toLowerCase();
-  if (!company || compLower.indexOf('caventra') !== -1 || compLower.indexOf('leads sheet') !== -1 || compLower.indexOf('master pipeline') !== -1) {
-    return null;
-  }
-  if (compLower === 'company' || compLower === 'company name' || compLower === 'business' || compLower === 'business name' || compLower === '#') {
+  if (!company || compLower.indexOf('caventra') !== -1 || compLower.indexOf('leads sheet') !== -1) return null;
+  if (['company', 'company name', 'business', 'business name', '#', 's.no', 'sr no', 'id', 'name', 'title', 'none', 'n/a', 'null'].indexOf(compLower) !== -1) {
     return null;
   }
 
-  // Validation: Must have at least one identifier (email, phone, website, or contact name)
+  // Validation: Must have business name AND at least one identifier (email, phone, website, or contact)
   var hasEmail = Boolean(email && email.indexOf('@') !== -1 && email.indexOf('.') !== -1);
   var hasPhone = Boolean(cleanPhone.replace(/[^\d]/g, '').length >= 7);
   var hasWebsite = Boolean(website && website.length >= 3);
   var hasContact = Boolean(contact && contact.length >= 2);
 
-  if (!hasEmail && !hasPhone && !hasWebsite && !hasContact) {
-    return null; // Skip truly blank or useless rows
-  }
+  if (!hasEmail && !hasPhone && !hasWebsite && !hasContact) return null;
 
   return {
     company: company,
@@ -326,184 +411,4 @@ function smartExtractLeadFromRow(row, colMap, fileName) {
     source: 'Google Drive (' + fileName + ')',
     status: 'new'
   };
-}
-
-// --- BROAD COLUMN HEADER MAPPING ---
-function mapHeaders(headers) {
-  var map = { company: -1, website: -1, contact: -1, email: -1, phone: -1, city: -1, country: -1, industry: -1, notes: -1 };
-
-  for (var i = 0; i < headers.length; i++) {
-    var rawH = String(headers[i] || '').trim().toLowerCase();
-    var h = rawH.replace(/[^a-z0-9]/g, '');
-
-    // Company Name
-    if (map.company === -1 && (
-      ['company', 'companyname', 'business', 'businessname', 'name', 'client', 'firm', 'organization', 'agency'].indexOf(h) !== -1 ||
-      rawH.indexOf('company') !== -1 || rawH.indexOf('business') !== -1
-    )) {
-      map.company = i;
-    }
-    // Website
-    else if (map.website === -1 && (
-      ['website', 'domain', 'url', 'web', 'site', 'websiteurl', 'link'].indexOf(h) !== -1 ||
-      rawH.indexOf('website') !== -1 || rawH.indexOf('domain') !== -1
-    )) {
-      map.website = i;
-    }
-    // Contact Person
-    else if (map.contact === -1 && (
-      ['contact', 'contactname', 'person', 'owner', 'fullname', 'decisionmaker', 'founder', 'ceo'].indexOf(h) !== -1 ||
-      rawH.indexOf('contact person') !== -1 || rawH.indexOf('contact name') !== -1
-    )) {
-      map.contact = i;
-    }
-    // Email
-    else if (map.email === -1 && (
-      ['email', 'businessemail', 'mail', 'emailaddress', 'contactemail', 'primaryemail', 'workemail', 'companyemail'].indexOf(h) !== -1 ||
-      rawH.indexOf('email') !== -1 || rawH.indexOf('mail') !== -1
-    )) {
-      map.email = i;
-    }
-    // Phone Number
-    else if (map.phone === -1 && (
-      ['phone', 'mobile', 'tel', 'businessphone', 'telephone', 'phonenumber', 'contactnumber', 'telephonenumber', 'mobilenumber', 'phoneno', 'mobileno', 'cell', 'whatsapp'].indexOf(h) !== -1 ||
-      rawH.indexOf('phone') !== -1 || rawH.indexOf('mobile') !== -1 || rawH.indexOf('tel') !== -1
-    )) {
-      map.phone = i;
-    }
-    // City
-    else if (map.city === -1 && ['city', 'location', 'town'].indexOf(h) !== -1) {
-      map.city = i;
-    }
-    // Country
-    else if (map.country === -1 && ['country', 'nation', 'region'].indexOf(h) !== -1) {
-      map.country = i;
-    }
-    // Industry
-    else if (map.industry === -1 && ['industry', 'sector', 'category'].indexOf(h) !== -1) {
-      map.industry = i;
-    }
-    // Notes
-    else if (map.notes === -1 && ['notes', 'comments', 'description', 'need', 'condition'].indexOf(h) !== -1) {
-      map.notes = i;
-    }
-  }
-
-  // Fallback: If company wasn't matched by name, assume column 0
-  if (map.company === -1 && headers.length > 0) map.company = 0;
-  return map;
-}
-
-// --- WEBHOOK POST API (For Automated Email Outreach Dispatch via Gmail) ---
-function doPost(e) {
-  try {
-    var body = {};
-    if (e && e.postData && e.postData.contents) {
-      body = JSON.parse(e.postData.contents);
-    }
-
-    var action = body.action || '';
-
-    if (action === 'send_email' || action === 'send_outreach') {
-      return jsonResponse(handleSendOutreachEmail(body));
-    } else {
-      return jsonResponse({ success: false, error: 'Unknown action specified: ' + action }, 400);
-    }
-  } catch (err) {
-    Logger.log('doPost error: ' + err.toString());
-    return jsonResponse({ success: false, error: err.message || 'Server error' }, 500);
-  }
-}
-
-function jsonResponse(data, status) {
-  var output = ContentService.createTextOutput(JSON.stringify(data));
-  output.setMimeType(ContentService.MimeType.JSON);
-  return output;
-}
-
-function handleSendOutreachEmail(data) {
-  var to = (data.to || data.recipientEmail || '').trim().toLowerCase();
-  var subject = (data.subject || '').trim();
-  var body = data.body || data.text || '';
-  var htmlBody = data.html || data.htmlBody || '';
-  var fromName = data.fromName || 'CAVENTRA Team';
-
-  if (!to || !subject || (!body && !htmlBody)) {
-    throw new Error('Missing required fields: to, subject, or body');
-  }
-
-  var options = { name: fromName };
-  if (htmlBody) {
-    options.htmlBody = htmlBody;
-  }
-
-  GmailApp.sendEmail(to, subject, body || subject, options);
-  Logger.log('✓ Outreach email successfully dispatched to: ' + to);
-  return { success: true, to: to, sentAt: new Date().toISOString() };
-}
-
-// --- OPTIONAL WEB API (Visit URL in browser to view extracted leads JSON) ---
-function doGet(e) {
-  var action = (e && e.parameter && e.parameter.action) || '';
-  if (action === 'send_email' || action === 'send_outreach') {
-    return ContentService.createTextOutput(JSON.stringify({ 
-      success: false, 
-      error: 'Method Not Allowed: Email dispatch requires authenticated POST request' 
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-
-  // Fast Lead Ingestion endpoint (isWebInvocation = true skips slow sequential Firestore HTTP calls)
-  var result = runScheduledIngestion(true);
-  return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
-}
-
-// --- AUTOMATIC 5-MINUTE TRIGGER ---
-function install5MinuteTrigger() {
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'runScheduledIngestion') {
-      ScriptApp.deleteTrigger(triggers[i]);
-    }
-  }
-  ScriptApp.newTrigger('runScheduledIngestion').timeBased().everyMinutes(5).create();
-  Logger.log('✓ CAVENTRA CRM 5-minute ingestion trigger installed successfully.');
-}
-
-// --- FIRESTORE WRITER ---
-function syncLeadsToFirestore(leads) {
-  if (!leads || leads.length === 0) return;
-  var token = ScriptApp.getOAuthToken();
-  var baseUrl = 'https://firestore.googleapis.com/v1/projects/' + encodeURIComponent(CONFIG.FIRESTORE_PROJECT_ID) + '/databases/(default)/documents/leads';
-  for (var i = 0; i < leads.length; i++) {
-    var lead = leads[i];
-    var docId = 'lead_' + Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, (lead.website || lead.email || lead.company).toLowerCase())
-      .map(function(b) { return ('0' + (b & 0xFF).toString(16)).slice(-2); }).join('').substring(0, 20);
-
-    var payload = {
-      fields: {
-        company: { stringValue: lead.company },
-        website: { stringValue: lead.website || '' },
-        contactName: { stringValue: lead.contactName || '' },
-        email: { stringValue: lead.email || '' },
-        phone: { stringValue: lead.phone || '' },
-        city: { stringValue: lead.city || '' },
-        country: { stringValue: lead.country || '' },
-        industry: { stringValue: lead.industry || '' },
-        notes: { stringValue: lead.notes || '' },
-        status: { stringValue: 'new' },
-        createdAt: { timestampValue: new Date().toISOString() },
-        source: { stringValue: lead.source }
-      }
-    };
-
-    try {
-      UrlFetchApp.fetch(baseUrl + '/' + docId, {
-        method: 'patch',
-        contentType: 'application/json',
-        headers: { Authorization: 'Bearer ' + token },
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true
-      });
-    } catch (e) {}
-  }
 }
