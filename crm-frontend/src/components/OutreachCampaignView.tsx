@@ -74,6 +74,46 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
   // Apps Script Webhook URL
   const [appsScriptUrl, setAppsScriptUrl] = useState(campaign.appsScriptUrl || '');
   const [isSavingUrl, setIsSavingUrl] = useState(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<{
+    online: boolean;
+    sender?: string;
+    quota?: number;
+    error?: string;
+  } | null>(null);
+
+  const handleTestWebhook = async () => {
+    if (!appsScriptUrl || !appsScriptUrl.startsWith('https://script.google.com/macros/s/')) {
+      alert('Please enter a valid Google Apps Script Web App URL ending in /exec');
+      return;
+    }
+    setIsTestingWebhook(true);
+    setWebhookStatus(null);
+    try {
+      const res = await fetch(appsScriptUrl);
+      const data = await res.json();
+      if (data.service || data.status === 'online' || typeof data.remainingDailyEmailQuota === 'number') {
+        setWebhookStatus({
+          online: true,
+          sender: data.activeSender || 'Official CAVENTRA Gmail',
+          quota: data.remainingDailyEmailQuota
+        });
+        onShowNotification(`Webhook online! Sender: ${data.activeSender || 'CAVENTRA'} (Daily Quota: ${data.remainingDailyEmailQuota ?? 'Active'})`);
+      } else {
+        setWebhookStatus({
+          online: false,
+          error: 'Connected, but received unexpected payload. Make sure the EmailDispatcher script is deployed.'
+        });
+      }
+    } catch (err: any) {
+      setWebhookStatus({
+        online: false,
+        error: 'Unable to connect directly. Verify deployment access is set to "Anyone" and URL ends in /exec.'
+      });
+    } finally {
+      setIsTestingWebhook(false);
+    }
+  };
 
   // Queue Dispatching State
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
@@ -296,42 +336,76 @@ export const OutreachCampaignView: React.FC<OutreachCampaignViewProps> = ({
 
         {/* Apps Script Webhook Configuration */}
         {isFounder && (
-          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs bg-slate-50/70 p-3 rounded-lg border border-slate-200/80">
-            <div className="flex-1 max-w-2xl">
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Apps Script Webhook URL (₹0 Direct Gmail Dispatcher)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="url"
-                  value={appsScriptUrl}
-                  onChange={(e) => setAppsScriptUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/AKfy.../exec"
-                  className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-                <button
-                  type="button"
-                  disabled={isSavingUrl}
-                  onClick={async () => {
-                    setIsSavingUrl(true);
-                    try {
-                      await updateCampaign({ appsScriptUrl }, currentUser);
-                      onShowNotification('Apps Script Webhook URL updated successfully.');
-                    } catch (e: any) {
-                      alert(e.message);
-                    } finally {
-                      setIsSavingUrl(false);
-                    }
-                  }}
-                  className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-sm shrink-0"
-                >
-                  {isSavingUrl ? 'Saving...' : 'Save Webhook URL'}
-                </button>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col gap-2 text-xs bg-slate-50/70 p-3.5 rounded-lg border border-slate-200/80">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+              <div className="flex-1 max-w-2xl">
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  CAVENTRA Gmail Webhook URL (caventraofficial@gmail.com Dispatcher)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="url"
+                    value={appsScriptUrl}
+                    onChange={(e) => setAppsScriptUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/AKfy.../exec"
+                    className="flex-1 min-w-[240px] bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    disabled={isSavingUrl}
+                    onClick={async () => {
+                      setIsSavingUrl(true);
+                      try {
+                        await updateCampaign({ appsScriptUrl }, currentUser);
+                        onShowNotification('Apps Script Webhook URL updated successfully.');
+                      } catch (e: any) {
+                        alert(e.message);
+                      } finally {
+                        setIsSavingUrl(false);
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingUrl ? 'Saving...' : 'Save URL'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isTestingWebhook || !appsScriptUrl}
+                    onClick={handleTestWebhook}
+                    className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm shrink-0 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingWebhook ? 'animate-spin' : ''}`} />
+                    <span>{isTestingWebhook ? 'Testing...' : 'Test Connection & Quota'}</span>
+                  </button>
+                </div>
               </div>
+              <p className="text-[11px] text-slate-500 max-w-sm leading-relaxed">
+                In CAVENTRA's Google Account: Deploy <strong>EmailDispatcher.gs</strong> as <strong>Web app &gt; Execute as: Me &gt; Who has access: Anyone</strong>. Then paste the Web App URL here.
+              </p>
             </div>
-            <p className="text-[11px] text-slate-500 max-w-sm leading-relaxed">
-              In Google Apps Script (Tab 4): Click <strong>Deploy &gt; New deployment &gt; Web app &gt; Execute as: Me &gt; Who has access: Anyone</strong>. Then paste the URL here.
-            </p>
+
+            {/* Live Webhook Status Indicator */}
+            {webhookStatus && (
+              <div className={`mt-1 flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                webhookStatus.online 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}>
+                {webhookStatus.online ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Verified Connected:</strong> Dispatches from <code className="font-mono bg-emerald-100/70 px-1 rounded">{webhookStatus.sender}</code> | <strong>Daily Quota:</strong> {typeof webhookStatus.quota === 'number' ? `${webhookStatus.quota} emails remaining today` : 'Active'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>{webhookStatus.error}</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

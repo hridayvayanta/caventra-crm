@@ -22,10 +22,10 @@ function testDriveFolderAccess() {
       var f = files.next();
       count++;
     }
-    Logger.log('✓ Success: Connected to folder "' + folder.getName() + '"');
+    Logger.log('[OK] Success: Connected to folder "' + folder.getName() + '"');
     Logger.log('Total files found in Drive: ' + count);
   } catch (e) {
-    Logger.log('❌ Error: ' + e.message);
+    Logger.log('[ERROR] Error: ' + e.message);
   }
 }
 
@@ -74,7 +74,7 @@ function runScheduledIngestion(isWebInvocation) {
     if (leads && leads.length > 0) {
       allExtractedLeads = allExtractedLeads.concat(leads);
       fileCount++;
-      Logger.log('✓ (' + (i + 1) + '/' + maxToProcess + ') Extracted ' + leads.length + ' leads from: ' + f.getName());
+      Logger.log('[OK] (' + (i + 1) + '/' + maxToProcess + ') Extracted ' + leads.length + ' leads from: ' + f.getName());
     }
   }
 
@@ -200,17 +200,31 @@ function findHeaderRowIndex(data) {
 function mapHeaders(headers) {
   var map = { company: -1, website: -1, contact: -1, email: -1, phone: -1, city: -1, country: -1, industry: -1, notes: -1 };
 
+  var contactList = [
+    'contactname', 'contactperson', 'personname', 'ownername', 'foundername', 
+    'fullname', 'decisionmaker', 'contact', 'person', 'owner', 'founder', 
+    'ceo', 'firstname', 'lastname'
+  ];
+
+  var companyList = [
+    'companyname', 'businessname', 'firmname', 'agencyname', 'orgname', 
+    'organizationname', 'brandname', 'storename', 'shopname', 'clientname'
+  ];
+
   // Pass 1: Identify Contact Person columns FIRST (so "Contact Name" is NEVER matched as "Company Name")
   for (var i = 0; i < headers.length; i++) {
     var raw = String(headers[i] || '').trim().toLowerCase();
     var h = raw.replace(/[^a-z0-9]/g, '');
     if (!h) continue;
 
-    if (map.contact === -1 && (
-      ['contactname', 'contactperson', 'personname', 'ownername', 'foundername', 'fullname', 'decisionmaker', 'contact', 'person', 'owner', 'founder', 'ceo', 'firstname', 'lastname'].indexOf(h) !== -1 ||
-      raw.indexOf('contact person') !== -1 || raw.indexOf('contact name') !== -1 || raw.indexOf('decision maker') !== -1 || raw.indexOf('owner name') !== -1
-    )) {
-      map.contact = i;
+    if (map.contact === -1) {
+      if (contactList.indexOf(h) !== -1 ||
+          raw.indexOf('contact person') !== -1 || 
+          raw.indexOf('contact name') !== -1 || 
+          raw.indexOf('decision maker') !== -1 || 
+          raw.indexOf('owner name') !== -1) {
+        map.contact = i;
+      }
     }
   }
 
@@ -222,10 +236,14 @@ function mapHeaders(headers) {
     if (!h) continue;
 
     // Never match serial number or ID columns as Company
-    if (h === 'id' || h === 'sno' || h === 'srno' || h === 'no' || h === 'serial' || h === 'clientid' || h === 'accountid' || h === 'leadid' || h === 'code') continue;
+    if (h === 'id' || h === 'sno' || h === 'srno' || h === 'no' || h === 'serial' || h === 'clientid' || h === 'accountid' || h === 'leadid' || h === 'code') {
+      continue;
+    }
 
-    if (['companyname', 'businessname', 'firmname', 'agencyname', 'orgname', 'organizationname', 'brandname', 'storename', 'shopname', 'clientname'].indexOf(h) !== -1 ||
-        raw.indexOf('company name') !== -1 || raw.indexOf('business name') !== -1 || raw.indexOf('firm name') !== -1) {
+    if (companyList.indexOf(h) !== -1 ||
+        raw.indexOf('company name') !== -1 || 
+        raw.indexOf('business name') !== -1 || 
+        raw.indexOf('firm name') !== -1) {
       map.company = i;
       break;
     }

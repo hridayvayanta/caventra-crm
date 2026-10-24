@@ -51,7 +51,7 @@ function handleSendOutreachEmail(data) {
   }
 
   GmailApp.sendEmail(to, subject, body || subject, options);
-  Logger.log('✓ Outreach email sent to: ' + to + ' (Remaining quota today: ' + (remainingQuota - 1) + ')');
+  Logger.log('[OK] Outreach email sent to: ' + to + ' (Remaining quota today: ' + (remainingQuota - 1) + ')');
 
   return { 
     success: true, 
@@ -81,12 +81,12 @@ function testSendEmail() {
   Logger.log('Current remaining daily email quota: ' + quota);
 
   if (quota <= 0) {
-    Logger.log('⚠️ Notice: Daily email quota is currently 0. Google will reset it within 24 hours.');
+    Logger.log('[WARN] Notice: Daily email quota is currently 0. Google will reset it within 24 hours.');
     return;
   }
 
   GmailApp.sendEmail(myEmail, 'CAVENTRA Outreach System Connected', 'Your official CAVENTRA Gmail sending integration is authorized and working perfectly! (Remaining quota: ' + quota + ')');
-  Logger.log('✓ Success: Test email sent to ' + myEmail);
+  Logger.log('[OK] Success: Test email sent to ' + myEmail);
 }
 
 function jsonResponse(data, status) {
