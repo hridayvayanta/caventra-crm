@@ -104,6 +104,55 @@ const COUNTRY_NAME_TO_ISO: Record<string, CountryCode> = {
   za: 'ZA',
 };
 
+/**
+ * Filter out non-lead summary calculations, outreach template titles, and spreadsheet notes
+ */
+export const isJunkLeadName = (name?: string | null): boolean => {
+  if (!name) return true;
+  const lower = name.trim().toLowerCase();
+  if (lower.length < 2) return true;
+
+  // Reject spreadsheet calculations and summaries
+  if (
+    lower === 'total / average' || 
+    lower.startsWith('total /') || 
+    lower === 'total' || 
+    lower === 'average' || 
+    lower === 'subtotal' || 
+    lower === 'summary' ||
+    lower.startsWith('summary ')
+  ) {
+    return true;
+  }
+
+  // Reject spreadsheet notes, pitch drafts, template names, and placeholders
+  const junkPhrases = [
+    'placeholder text', 
+    'lorem ipsum', 
+    '[business name]', 
+    '[owner/team]', 
+    'gmail header', 
+    'quick upgrade for', 
+    'outreach (email', 
+    'email + sms', 
+    'legacy php',
+    'sample template',
+    'outreach pitch'
+  ];
+
+  for (const phrase of junkPhrases) {
+    if (lower.includes(phrase)) return true;
+  }
+
+  const genericHeaders = [
+    'company', 'company name', 'business name', 'firm name', 'client name', 
+    'serial no', 's.no', 'sr no', '#', 'website url', 'title', 'none', 'n/a', 'null'
+  ];
+  if (genericHeaders.includes(lower)) return true;
+
+  return false;
+};
+
 // RFC-compliant email regex
 const RFC_EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
 

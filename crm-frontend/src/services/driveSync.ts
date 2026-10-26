@@ -7,7 +7,7 @@ import {
   normalizePhone, 
   normalizeBusinessName 
 } from './db';
-import { classifyLead } from './leadClassifier';
+import { classifyLead, isJunkLeadName } from './leadClassifier';
 
 export const DEFAULT_DRIVE_WEB_APP_URL = 
   'https://script.google.com/macros/s/AKfycbxsUGci8s8exsbMvAew3Kc684s2c2S1-q0vL7EthpAUA80CVv8TDcL5b10NeSU-Ob8PHg/exec';
@@ -56,8 +56,9 @@ export const syncLeadsFromGoogleDrive = async (
 
     const data = await response.json();
 
-    if (!data || !data.success) {
-      throw new Error(data?.error || 'Failed to fetch leads from Google Drive Web App');
+    const isSuccess = Boolean(data && (data.success === true || data.status === 'success' || Array.isArray(data.leads)));
+    if (!isSuccess) {
+      throw new Error(data?.error || data?.message || 'Failed to fetch leads from Google Drive Web App. Ensure Web App is deployed with "Who has access: Anyone".');
     }
 
     const rawLeads: any[] = data.leads || [];
@@ -87,7 +88,7 @@ export const syncLeadsFromGoogleDrive = async (
 
     for (const raw of rawLeads) {
       const company = String(raw.company || raw.businessName || '').trim();
-      if (!company) {
+      if (!company || isJunkLeadName(company)) {
         rejectedCount++;
         continue;
       }

@@ -82,6 +82,7 @@ function runScheduledIngestion(isWebInvocation) {
 
   return { 
     success: true, 
+    status: 'success',
     filesFound: fileCount, 
     totalFiles: fileList.length, 
     totalLeads: allExtractedLeads.length, 
@@ -402,9 +403,19 @@ function smartExtractLeadFromRow(row, colMap, fileName) {
     }
   }
 
-  // Reject invalid / generic placeholder names
+  // Reject invalid / generic placeholder names & spreadsheet calculation summaries
   var compLower = company.toLowerCase();
   if (!company || compLower.indexOf('caventra') !== -1 || compLower.indexOf('leads sheet') !== -1) return null;
+  if (compLower === 'total / average' || compLower.indexOf('total /') === 0 || compLower === 'total' || compLower === 'average' || compLower === 'subtotal' || compLower === 'summary' || compLower.indexOf('summary ') === 0) {
+    return null;
+  }
+  var junkPhrases = [
+    'placeholder text', 'lorem ipsum', '[business name]', '[owner/team]', 'gmail header',
+    'quick upgrade for', 'outreach (email', 'email + sms', 'legacy php', 'sample template', 'outreach pitch'
+  ];
+  for (var jp = 0; jp < junkPhrases.length; jp++) {
+    if (compLower.indexOf(junkPhrases[jp]) !== -1) return null;
+  }
   if (['company', 'company name', 'business', 'business name', '#', 's.no', 'sr no', 'id', 'name', 'title', 'none', 'n/a', 'null'].indexOf(compLower) !== -1) {
     return null;
   }

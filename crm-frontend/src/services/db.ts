@@ -23,7 +23,7 @@ import {
   OutreachCampaign
 } from '../types/crm';
 import { queueOutreachForLead, DEFAULT_CAMPAIGN } from './outreach';
-import { classifyLead, ensureLeadClassified } from './leadClassifier';
+import { classifyLead, ensureLeadClassified, isJunkLeadName } from './leadClassifier';
 
 // Local storage keys for offline/local mode
 const STORAGE_KEYS = {
@@ -119,6 +119,9 @@ export const deduplicateLeadsList = (leads: Lead[]): Lead[] => {
 
   for (const l of leads) {
     if (seenIds.has(l.id)) continue;
+
+    // Filter out spreadsheet calculation rows or pitch template notes
+    if (isJunkLeadName(l.businessName)) continue;
 
     const classified = ensureLeadClassified(l);
 
@@ -503,14 +506,28 @@ export const updateLead = async (
   setStored(STORAGE_KEYS.LEADS, updatedLeads);
 };
 
-// 6b. Idempotent Migration / Backfill to classify existing leads (Requirement 6)
+// 6b. Idempotent Migration / Backfill to classify existing leads and cleanse junk entries (Requirement 6)
 export const backfillLeadClassification = async (
   leads: Lead[]
-): Promise<{ backfilledCount: number; leads: Lead[] }> => {
+): Promise<{ backfilledCount: number; purgedJunkCount: number; leads: Lead[] }> => {
   let backfilledCount = 0;
+  let purgedJunkCount = 0;
 
-  const upgradedLeads = leads.map((l) => {
-    // Check if classification fields are missing or not yet derived
+  // 1. Identify and purge any non-lead summary or template titles
+  const validLeads: Lead[] = [];
+  const junkIdsToDelete: string[] = [];
+
+  for (const l of leads) {
+    if (isJunkLeadName(l.businessName)) {
+      purgedJunkCount++;
+      junkIdsToDelete.push(l.id);
+    } else {
+      validLeads.push(l);
+    }
+  }
+
+  // 2. Ensure all valid leads have complete classification metadata
+  const upgradedLeads = validLeads.map((l) => {
     if (!l.contactType || l.hasValidPhone === undefined || !l.phoneCountry) {
       backfilledCount++;
       return ensureLeadClassified(l);
@@ -518,13 +535,24 @@ export const backfillLeadClassification = async (
     return l;
   });
 
-  if (backfilledCount > 0) {
+  if (backfilledCount > 0 || purgedJunkCount > 0) {
     setStored(STORAGE_KEYS.LEADS, upgradedLeads);
 
     if (isFirebaseConfigured() && db) {
       try {
         const firestore = db;
-        const unclassified = upgradedLeads.filter((_, idx) => !leads[idx].contactType);
+
+        // Delete junk documents from Firestore if present
+        if (junkIdsToDelete.length > 0) {
+          const deleteBatch = writeBatch(firestore);
+          for (const id of junkIdsToDelete) {
+            deleteBatch.delete(doc(firestore, 'leads', id));
+          }
+          await deleteBatch.commit();
+        }
+
+        // Update unclassified leads in chunks
+        const unclassified = upgradedLeads.filter((_, idx) => !validLeads[idx].contactType);
         const CHUNK_SIZE = 100;
         for (let i = 0; i < unclassified.length; i += CHUNK_SIZE) {
           const chunk = unclassified.slice(i, i + CHUNK_SIZE);
@@ -540,7 +568,7 @@ export const backfillLeadClassification = async (
     }
   }
 
-  return { backfilledCount, leads: upgradedLeads };
+  return { backfilledCount, purgedJunkCount, leads: upgradedLeads };
 };
 
 // 7. Delete Lead
