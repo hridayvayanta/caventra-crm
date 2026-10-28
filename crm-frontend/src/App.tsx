@@ -558,6 +558,10 @@ export function App() {
       alert('Outreach Campaign is currently PAUSED. Please activate it first.');
       return;
     }
+    if (!campaign.appsScriptUrl) {
+      alert('CAVENTRA Gmail Webhook URL is not configured. Please paste your Web App URL in the Email Outreach tab.');
+      return;
+    }
     const valid = targetLeads.filter(l => {
       const email = l.businessEmail || l.email;
       return email && validateEmailSyntax(email) && l.outreachStatus !== 'sent';
@@ -650,6 +654,10 @@ export function App() {
     if (!currentUser) return;
     if (campaign.status !== 'ACTIVE') {
       alert('Outreach Campaign is currently PAUSED. Please activate it first in the Email Outreach tab.');
+      return;
+    }
+    if (!campaign.appsScriptUrl) {
+      alert('CAVENTRA Gmail Webhook URL is not configured. Please paste your Web App URL in the Email Outreach tab.');
       return;
     }
     setIsDispatchingSingleId(lead.id);

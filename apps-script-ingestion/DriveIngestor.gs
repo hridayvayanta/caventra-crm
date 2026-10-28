@@ -29,10 +29,76 @@ function testDriveFolderAccess() {
   }
 }
 
-// --- WEB API (Called by CAVENTRA CRM "Sync Drive" button) ---
+// --- WEB API (Called by CAVENTRA CRM "Sync Drive" button or Outreach) ---
 function doGet(e) {
+  // If called for health check or quota test
+  if (e && e.parameter && (e.parameter.check === 'health' || e.parameter.action === 'health')) {
+    return jsonResponse({
+      status: 'online',
+      service: 'CAVENTRA Official Ingestor & Dispatcher',
+      activeSender: Session.getActiveUser().getEmail(),
+      remainingDailyEmailQuota: MailApp.getRemainingDailyQuota(),
+      timestamp: new Date().toISOString()
+    });
+  }
   var result = runScheduledIngestion(true);
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// --- WEBHOOK POST API (Handles outreach email dispatch) ---
+function doPost(e) {
+  try {
+    var body = {};
+    if (e && e.postData && e.postData.contents) {
+      body = JSON.parse(e.postData.contents);
+    }
+    var action = body.action || '';
+    if (action === 'send_email' || action === 'send_outreach') {
+      return jsonResponse(handleSendOutreachEmail(body));
+    }
+    return jsonResponse({ success: false, error: 'Unknown action: ' + action }, 400);
+  } catch (err) {
+    Logger.log('doPost error: ' + err.toString());
+    return jsonResponse({ success: false, error: err.message || 'Server error' }, 500);
+  }
+}
+
+// --- DISPATCH EMAIL VIA GMAIL ---
+function handleSendOutreachEmail(data) {
+  var remainingQuota = MailApp.getRemainingDailyQuota();
+  if (remainingQuota <= 0) {
+    throw new Error('Google Daily Email Quota Reached. Quota resets in 24 hours.');
+  }
+
+  var to = (data.to || data.recipientEmail || '').trim().toLowerCase();
+  var subject = (data.subject || '').trim();
+  var body = data.body || data.text || '';
+  var htmlBody = data.html || data.htmlBody || '';
+  var fromName = data.fromName || 'CAVENTRA Team';
+
+  if (!to || !subject || (!body && !htmlBody)) {
+    throw new Error('Missing required fields: to, subject, or body');
+  }
+
+  var options = { name: fromName };
+  if (htmlBody) options.htmlBody = htmlBody;
+
+  GmailApp.sendEmail(to, subject, body || subject, options);
+  Logger.log('[OK] Outreach email sent to: ' + to);
+
+  return { 
+    success: true, 
+    to: to, 
+    sender: Session.getActiveUser().getEmail(),
+    remainingQuota: remainingQuota - 1, 
+    sentAt: new Date().toISOString() 
+  };
+}
+
+function jsonResponse(data, status) {
+  var output = ContentService.createTextOutput(JSON.stringify(data));
+  output.setMimeType(ContentService.MimeType.JSON);
+  return output;
 }
 
 // --- MAIN INGESTION FUNCTION (Newest-First Processing) ---

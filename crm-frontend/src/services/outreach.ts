@@ -530,30 +530,45 @@ export const processJobDelivery = async (
   const now = new Date().toISOString();
   const providerMessageId = `msg_out_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-  // 4. Send through connected Apps Script Webhook if configured
-  if (campaign.appsScriptUrl) {
-    try {
-      const optOutUrl = `https://caventraofficial.in/#optout?token=${job.optOutToken}&email=${encodeURIComponent(job.recipientEmail)}`;
-      const renderedBody = renderTemplate(campaign.body, {
-        businessName: job.businessName,
-        contactName: job.recipientName,
-      }, optOutUrl);
-
-      await fetch(campaign.appsScriptUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: 'send_email',
-          to: job.recipientEmail,
-          subject: job.resolvedSubject || campaign.subject,
-          body: renderedBody,
-          fromName: campaign.senderName || 'CAVENTRA Team',
-        }),
-        mode: 'no-cors',
-      });
-    } catch (sendErr) {
-      console.warn('Apps Script outreach delivery notice:', sendErr);
+  // 4. Send through connected Apps Script Webhook
+  if (!campaign.appsScriptUrl) {
+    if (isFirebaseConfigured() && db) {
+      await updateDoc(doc(db, 'emailJobs', jobId), { status: 'QUEUED', errorDetails: 'Missing Webhook URL' });
     }
+    return { 
+      success: false, 
+      error: 'Gmail Webhook URL is not configured. Go to the Email Outreach tab and paste your Web App URL.' 
+    };
+  }
+
+  try {
+    const optOutUrl = `https://caventraofficial.in/#optout?token=${job.optOutToken}&email=${encodeURIComponent(job.recipientEmail)}`;
+    const renderedBody = renderTemplate(campaign.body, {
+      businessName: job.businessName,
+      contactName: job.recipientName,
+    }, optOutUrl);
+
+    await fetch(campaign.appsScriptUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'send_email',
+        to: job.recipientEmail,
+        subject: job.resolvedSubject || campaign.subject,
+        body: renderedBody,
+        fromName: campaign.senderName || 'CAVENTRA Team',
+      }),
+      mode: 'no-cors',
+    });
+  } catch (sendErr: any) {
+    console.warn('Apps Script outreach delivery notice:', sendErr);
+    if (isFirebaseConfigured() && db) {
+      await updateDoc(doc(db, 'emailJobs', jobId), { status: 'QUEUED', errorDetails: sendErr.message });
+    }
+    return {
+      success: false,
+      error: `Network error reaching Gmail Dispatcher: ${sendErr.message}`,
+    };
   }
 
   // 5. Update Job and Lead Status to SENT
