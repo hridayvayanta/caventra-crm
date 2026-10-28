@@ -9,14 +9,14 @@ import {
 } from '../types/crm';
 
 export interface ClassifiedLeadFields {
-  normalizedPhone?: string;
-  normalizedEmail?: string;
+  normalizedPhone?: string | null;
+  normalizedEmail?: string | null;
   hasValidPhone: boolean;
   hasValidEmail: boolean;
   contactType: ContactType;
-  phoneCountryCode?: string; // 2-letter ISO, e.g. 'IN', 'US', 'AE', 'GB'
+  phoneCountryCode?: string | null; // 2-letter ISO, e.g. 'IN', 'US', 'AE', 'GB'
   phoneCountry: string; // Proper readable country name e.g. 'India', 'United States', or 'Unknown'
-  callingCode?: string; // e.g. '+91', '+1', '+971'
+  callingCode?: string | null; // e.g. '+91', '+1', '+971'
   countryClassificationStatus: CountryClassificationStatus;
 }
 
@@ -183,7 +183,7 @@ export const getCountryName = (code?: string): string => {
 /**
  * Generate flag emoji from ISO-3166-1 alpha-2 code
  */
-export const getCountryFlag = (countryCode?: string): string => {
+export const getCountryFlag = (countryCode?: string | null): string => {
   if (!countryCode || countryCode.trim().length !== 2) return '🌐';
   const upper = countryCode.trim().toUpperCase();
   // Ensure exactly 2 A-Z letters
@@ -331,11 +331,11 @@ export const classifyLead = (lead: Partial<Lead>): ClassifiedLeadFields => {
   return {
     hasValidPhone,
     hasValidEmail,
-    normalizedPhone,
-    normalizedEmail,
-    phoneCountryCode,
-    phoneCountry,
-    callingCode,
+    normalizedPhone: normalizedPhone || null,
+    normalizedEmail: normalizedEmail || null,
+    phoneCountryCode: phoneCountryCode || null,
+    phoneCountry: phoneCountry || 'Unknown',
+    callingCode: callingCode || null,
     countryClassificationStatus,
     contactType,
   };

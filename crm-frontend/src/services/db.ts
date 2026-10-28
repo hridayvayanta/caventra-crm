@@ -167,6 +167,21 @@ const setStored = <T>(key: string, value: T): void => {
   }
 };
 
+export const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clean: any = Array.isArray(obj) ? [] : {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) {
+      clean[key] = null;
+    } else if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+      clean[key] = sanitizeForFirestore(value);
+    } else {
+      clean[key] = value;
+    }
+  }
+  return clean as T;
+};
+
 export const getAllCurrentLeads = async (): Promise<Lead[]> => {
   if (isFirebaseConfigured() && db) {
     try {
@@ -184,67 +199,80 @@ export const getAllCurrentLeads = async (): Promise<Lead[]> => {
 
 // 1. Subscribe to Leads (Real-time listener with Two-Way Cloud Sync)
 export const subscribeLeads = (callback: (leads: Lead[]) => void): (() => void) => {
-  // Emit local cache immediately so UI is instantaneous
-  const rawLocal = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
-  const localLeads = deduplicateLeadsList(rawLocal);
-  if (localLeads.length > 0) {
+  let isUnsubscribed = false;
+
+  const emitCurrentLocal = () => {
+    const rawLocal = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
+    const localLeads = deduplicateLeadsList(rawLocal);
     localLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     callback(localLeads);
-  }
+    return localLeads;
+  };
+
+  // 1. Emit local cache immediately so UI is instantaneous
+  emitCurrentLocal();
+
+  // 2. ALWAYS listen to local storage events (for instantaneous reactivity on import/addition)
+  const handleStorageUpdate = () => {
+    if (isUnsubscribed) return;
+    emitCurrentLocal();
+  };
+  window.addEventListener('caventra_storage_update', handleStorageUpdate);
+  window.addEventListener('storage', handleStorageUpdate);
+
+  let unsubFirestore: (() => void) | null = null;
 
   if (isFirebaseConfigured() && db) {
     const leadsRef = collection(db, 'leads');
-    return onSnapshot(leadsRef, (snapshot) => {
+    unsubFirestore = onSnapshot(leadsRef, (snapshot) => {
+      if (isUnsubscribed) return;
       const rawCloud: Lead[] = [];
       snapshot.forEach((docSnap) => {
         rawCloud.push(docSnap.data() as Lead);
       });
       const cloudLeads = deduplicateLeadsList(rawCloud);
-      cloudLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      // Re-read fresh local storage leads
+      const currentLocal = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
 
       if (cloudLeads.length > 0) {
-        // Cloud has leads: cache them locally and render to all users across devices
-        setStored(STORAGE_KEYS.LEADS, cloudLeads);
-        callback(cloudLeads);
-      } else if (localLeads.length > 0 && db) {
-        // Cloud is empty but local browser has leads: replicate unique local leads to Cloud Firestore
+        // Merge cloud leads with current local leads so none are lost
+        const merged = deduplicateLeadsList([...cloudLeads, ...currentLocal]);
+        merged.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        setStored(STORAGE_KEYS.LEADS, merged);
+        callback(merged);
+      } else if (currentLocal.length > 0 && db) {
+        // Cloud is empty but local storage has leads: replicate local leads to Cloud Firestore
         const firestore = db;
         const CHUNK_SIZE = 100;
-        for (let i = 0; i < localLeads.length; i += CHUNK_SIZE) {
-          const chunk = localLeads.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < currentLocal.length; i += CHUNK_SIZE) {
+          const chunk = currentLocal.slice(i, i + CHUNK_SIZE);
           const batch = writeBatch(firestore);
           for (const l of chunk) {
-            batch.set(doc(firestore, 'leads', l.id), l);
+            batch.set(doc(firestore, 'leads', l.id), sanitizeForFirestore(l));
           }
           batch.commit().catch(e => console.warn('Cloud replication notice:', e));
         }
-        callback(localLeads);
+        currentLocal.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+        callback(currentLocal);
       } else {
         callback([]);
       }
     }, (error) => {
       console.warn('Firestore subscribeLeads error:', error);
-      const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
-      callback(leads);
+      if (!isUnsubscribed) {
+        emitCurrentLocal();
+      }
     });
   }
 
-  // Local storage real-time listener across tabs and events
-  const emitCurrent = () => {
-    const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
-    leads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    callback(leads);
-  };
-
-  emitCurrent();
-
-  const handleUpdate = () => emitCurrent();
-  window.addEventListener('caventra_storage_update', handleUpdate);
-  window.addEventListener('storage', handleUpdate);
-
   return () => {
-    window.removeEventListener('caventra_storage_update', handleUpdate);
-    window.removeEventListener('storage', handleUpdate);
+    isUnsubscribed = true;
+    window.removeEventListener('caventra_storage_update', handleStorageUpdate);
+    window.removeEventListener('storage', handleStorageUpdate);
+    if (unsubFirestore) {
+      unsubFirestore();
+    }
   };
 };
 
@@ -414,26 +442,28 @@ export const saveLead = async (lead: Lead, performedBy: User): Promise<void> => 
   };
 
   if (isFirebaseConfigured() && db) {
-    const leadRef = doc(db, 'leads', classifiedLead.id);
-    await setDoc(leadRef, classifiedLead);
-    const actRef = doc(db, 'activities', activity.id);
-    await setDoc(actRef, activity);
-
-    // Automatic outreach queuing (Executes ONLY if campaign is ACTIVE, valid email, not suppressed)
     try {
-      const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
-      const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
-      if (campaign.status === 'ACTIVE' && classifiedLead.businessEmail) {
-        await queueOutreachForLead(classifiedLead, campaign, performedBy);
+      const leadRef = doc(db, 'leads', classifiedLead.id);
+      await setDoc(leadRef, sanitizeForFirestore(classifiedLead));
+      const actRef = doc(db, 'activities', activity.id);
+      await setDoc(actRef, sanitizeForFirestore(activity));
+
+      // Automatic outreach queuing (Executes ONLY if campaign is ACTIVE, valid email, not suppressed)
+      try {
+        const campDoc = await getDoc(doc(db, 'campaigns', DEFAULT_CAMPAIGN.id));
+        const campaign = campDoc.exists() ? (campDoc.data() as OutreachCampaign) : DEFAULT_CAMPAIGN;
+        if (campaign.status === 'ACTIVE' && classifiedLead.businessEmail) {
+          await queueOutreachForLead(classifiedLead, campaign, performedBy);
+        }
+      } catch (e) {
+        console.warn('Outreach queuing skipped:', e);
       }
     } catch (e) {
-      console.warn('Outreach queuing skipped:', e);
+      console.warn('Firestore createLead write warning:', e);
     }
-
-    return;
   }
 
-  // Local storage update
+  // Local storage update (always update local cache for instant UI feedback)
   const leads = deduplicateLeadsList(getStored<Lead[]>(STORAGE_KEYS.LEADS, []));
   setStored(STORAGE_KEYS.LEADS, [classifiedLead, ...leads]);
 
@@ -496,9 +526,12 @@ export const updateLead = async (
   };
 
   if (isFirebaseConfigured() && db) {
-    const leadRef = doc(db, 'leads', leadId);
-    await updateDoc(leadRef, cleanUpdates);
-    return;
+    try {
+      const leadRef = doc(db, 'leads', leadId);
+      await updateDoc(leadRef, sanitizeForFirestore(cleanUpdates));
+    } catch (e) {
+      console.warn('Firestore updateLead warning:', e);
+    }
   }
 
   const leads = getStored<Lead[]>(STORAGE_KEYS.LEADS, []);
@@ -558,7 +591,7 @@ export const backfillLeadClassification = async (
           const chunk = unclassified.slice(i, i + CHUNK_SIZE);
           const batch = writeBatch(firestore);
           for (const l of chunk) {
-            batch.set(doc(firestore, 'leads', l.id), l, { merge: true });
+            batch.set(doc(firestore, 'leads', l.id), sanitizeForFirestore(l), { merge: true });
           }
           await batch.commit();
         }
@@ -705,9 +738,9 @@ export const batchImportLeads = async (
           const chunk = trulyNewLeads.slice(i, i + CHUNK_SIZE);
           const batch = writeBatch(db);
           for (const lead of chunk) {
-            batch.set(doc(db, 'leads', lead.id), lead);
+            batch.set(doc(db, 'leads', lead.id), sanitizeForFirestore(lead));
             const actRef = doc(db, 'activities', `act_imp_${lead.id}`);
-            batch.set(actRef, {
+            batch.set(actRef, sanitizeForFirestore({
               id: `act_imp_${lead.id}`,
               leadId: lead.id,
               type: 'import',
@@ -716,11 +749,11 @@ export const batchImportLeads = async (
               performedBy: performedBy.name,
               performedByEmail: performedBy.email,
               timestamp: new Date().toISOString(),
-            });
+            }));
           }
           await batch.commit();
         }
-        await setDoc(doc(db, 'import_history', updatedRecord.id), updatedRecord);
+        await setDoc(doc(db, 'import_history', updatedRecord.id), sanitizeForFirestore(updatedRecord));
       } catch (cloudErr) {
         console.warn('Firestore cloud replication warning:', cloudErr);
       }

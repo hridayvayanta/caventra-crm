@@ -852,8 +852,24 @@ export function App() {
                 isSyncingDrive={isSyncingDrive}
               />
             ) : filteredLeads.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 text-xs">
-                No prospects match the filter "{currentSection}" or search query "{searchQuery}".
+              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500 text-xs shadow-sm">
+                <p className="mb-3 text-slate-600 font-medium">
+                  No prospects match the filter "{currentSection}" {searchQuery ? `or search query "${searchQuery}"` : ''}.
+                </p>
+                {(currentSection !== 'all' || contactMethodFilter !== 'all' || countryFilter !== 'all' || statusFilter !== 'all' || searchQuery) && (
+                  <button
+                    onClick={() => {
+                      setCurrentSection('all');
+                      setContactMethodFilter('all');
+                      setCountryFilter('all');
+                      setStatusFilter('all');
+                      setSearchQuery('');
+                    }}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors inline-flex items-center gap-2"
+                  >
+                    <span>View All {leads.length} Leads</span>
+                  </button>
+                )}
               </div>
             ) : (
               <>

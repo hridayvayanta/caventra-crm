@@ -132,8 +132,10 @@ export const syncLeadsFromGoogleDrive = async (
       const leadKey = (normDomain && !normDomain.includes('unknown') && !normDomain.endsWith('.local'))
         ? normDomain
         : (email || cleanPhone || normName);
-      const cleanKey = leadKey.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 48);
-      const deterministicId = `lead_drive_${cleanKey}`;
+      const cleanKey = leadKey.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '').slice(0, 48);
+      const deterministicId = cleanKey 
+        ? `lead_drive_${cleanKey}` 
+        : `lead_drive_${Date.now()}_${validLeads.length}_${Math.random().toString(36).substring(2, 6)}`;
 
       const lead: Lead = {
         id: deterministicId,

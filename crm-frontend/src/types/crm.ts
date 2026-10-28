@@ -146,14 +146,14 @@ export interface Lead {
   outreachSentAt?: string;
 
   // Smart Contact & Country Classification Fields
-  normalizedPhone?: string;
-  normalizedEmail?: string;
+  normalizedPhone?: string | null;
+  normalizedEmail?: string | null;
   hasValidPhone?: boolean;
   hasValidEmail?: boolean;
   contactType?: ContactType;
-  phoneCountryCode?: string; // 2-letter ISO, e.g. 'IN', 'US', 'AE'
+  phoneCountryCode?: string | null; // 2-letter ISO, e.g. 'IN', 'US', 'AE'
   phoneCountry?: string; // Proper name, e.g. 'India', 'United States'
-  callingCode?: string; // International calling prefix e.g. '+91', '+1', '+971'
+  callingCode?: string | null; // International calling prefix e.g. '+91', '+1', '+971'
   countryClassificationStatus?: CountryClassificationStatus;
 
   createdAt: string;
